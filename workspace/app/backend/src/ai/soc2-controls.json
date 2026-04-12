@@ -1,0 +1,58 @@
+[
+  {
+    "controlId": "CC1.1",
+    "family": "Control Environment",
+    "title": "Integrity and Ethical Values",
+    "description": "Management demonstrates commitment to integrity and ethical values.",
+    "defaultWeight": 1.0
+  },
+  {
+    "controlId": "CC2.1",
+    "family": "Communication",
+    "title": "Internal Communication",
+    "description": "The entity obtains and uses quality information to support internal control.",
+    "defaultWeight": 1.0
+  },
+  {
+    "controlId": "CC3.1",
+    "family": "Risk Assessment",
+    "title": "Risk Identification",
+    "description": "The entity identifies and assesses risks to system objectives.",
+    "defaultWeight": 1.2
+  },
+  {
+    "controlId": "CC4.1",
+    "family": "Monitoring",
+    "title": "Control Monitoring",
+    "description": "The entity evaluates and communicates internal control deficiencies.",
+    "defaultWeight": 1.1
+  },
+  {
+    "controlId": "CC5.1",
+    "family": "Control Activities",
+    "title": "Logical Access Controls",
+    "description": "The entity develops controls to mitigate security risks.",
+    "defaultWeight": 1.4
+  },
+  {
+    "controlId": "CC6.1",
+    "family": "Logical and Physical Access",
+    "title": "Identity and Access Management",
+    "description": "The entity restricts logical access to systems and data.",
+    "defaultWeight": 1.6
+  },
+  {
+    "controlId": "CC7.1",
+    "family": "System Operations",
+    "title": "Vulnerability and Event Management",
+    "description": "The entity monitors system components and mitigates vulnerabilities.",
+    "defaultWeight": 1.5
+  },
+  {
+    "controlId": "CC8.1",
+    "family": "Change Management",
+    "title": "Configuration and Release Control",
+    "description": "Changes are authorized, tested, and approved before deployment.",
+    "defaultWeight": 1.3
+  }
+]

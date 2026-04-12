@@ -1,0 +1,67 @@
+.scroll-stack-scroller {
+  position: relative;
+  width: 100%;
+}
+
+.scroll-stack-scroller:not([data-window-scroll]) {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: visible;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-stack-scroller[data-window-scroll='true'] {
+  height: auto;
+  overflow: visible;
+}
+
+.scroll-stack-scroller,
+.scroll-stack-card {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+.scroll-stack-inner {
+  padding: 10vh 0 40rem;
+  min-height: 100vh;
+}
+
+.scroll-stack-card {
+  transform-origin: top center;
+  will-change: transform, filter;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  width: 100%;
+  margin: 30px 0;
+  box-sizing: border-box;
+  position: relative;
+
+  /* Cybertron theme */
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #0a0e1a;
+  box-shadow:
+    0 0 40px rgba(0, 0, 0, 0.35),
+    0 0 1px rgba(0, 240, 255, 0.08);
+  overflow: hidden;
+}
+
+.scroll-stack-card:hover {
+  border-color: rgba(0, 240, 255, 0.12);
+}
+
+.scroll-stack-end {
+  width: 100%;
+  height: 1px;
+}
+
+@media (max-width: 640px) {
+  .scroll-stack-inner {
+    padding: 6vh 0 30rem;
+  }
+
+  .scroll-stack-card {
+    border-radius: 1rem;
+  }
+}

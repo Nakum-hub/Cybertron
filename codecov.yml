@@ -1,0 +1,12 @@
+coverage:
+  precision: 2
+  round: down
+
+comment:
+  layout: "reach,diff,flags,files"
+  require_changes: false
+
+flags:
+  backend:
+    paths:
+      - workspace/app/backend/src

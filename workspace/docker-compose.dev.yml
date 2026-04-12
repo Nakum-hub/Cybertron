@@ -1,0 +1,139 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  postgres:
+    image: postgres:16.8-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cybertron}
+      POSTGRES_USER: ${POSTGRES_USER:-cybertron}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cybertron_dev_password}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-cybertron} -d ${POSTGRES_DB:-cybertron}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: .
+      dockerfile: app/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 8001
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      AUTH_MODE: ${AUTH_MODE:-jwt_hs256}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      REDIS_CONNECT_TIMEOUT_MS: ${REDIS_CONNECT_TIMEOUT_MS:-2000}
+      REDIS_CONNECT_MAX_RETRIES: ${REDIS_CONNECT_MAX_RETRIES:-4}
+      ALLOW_INSECURE_DEMO_AUTH: 'false'
+      ALLOW_PUBLIC_REGISTRATION: ${ALLOW_PUBLIC_REGISTRATION:-true}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      AUTH_COOKIE_PATH: ${AUTH_COOKIE_PATH:-/}
+      AUTH_ACCESS_COOKIE_NAME: ${AUTH_ACCESS_COOKIE_NAME:-ct_access}
+      AUTH_REFRESH_COOKIE_NAME: ${AUTH_REFRESH_COOKIE_NAME:-ct_refresh}
+      AUTH_CSRF_COOKIE_NAME: ${AUTH_CSRF_COOKIE_NAME:-ct_csrf}
+      CSRF_ENABLED: ${CSRF_ENABLED:-true}
+      REQUIRE_DATABASE_FOR_CI: ${REQUIRE_DATABASE_FOR_CI:-false}
+      STRICT_DEPENDENCIES: ${STRICT_DEPENDENCIES:-true}
+      AUTH_RATE_LIMIT_WINDOW_MS: ${AUTH_RATE_LIMIT_WINDOW_MS:-60000}
+      AUTH_RATE_LIMIT_MAX_REQUESTS: ${AUTH_RATE_LIMIT_MAX_REQUESTS:-25}
+      AUTH_IDENTITY_RATE_LIMIT_MAX_REQUESTS: ${AUTH_IDENTITY_RATE_LIMIT_MAX_REQUESTS:-8}
+      REPORT_RATE_LIMIT_WINDOW_MS: ${REPORT_RATE_LIMIT_WINDOW_MS:-60000}
+      REPORT_RATE_LIMIT_MAX_REQUESTS: ${REPORT_RATE_LIMIT_MAX_REQUESTS:-80}
+      REQUIRE_AUTH_FOR_THREAT_ENDPOINTS: 'false'
+      REQUIRE_AUTH_FOR_PLATFORM_ENDPOINTS: 'true'
+      METRICS_REQUIRE_AUTH: 'false'
+      PUBLIC_API_BASE_URL: /api
+      PUBLIC_AUTH_TOKEN_PATH: /v1/auth/token
+      PUBLIC_REPORTS_PATH: /v1/reports
+      PUBLIC_REPORT_UPLOAD_PATH: /v1/reports/upload
+      PUBLIC_REPORT_DOWNLOAD_PATH_TEMPLATE: /v1/reports/{reportId}/download
+      PUBLIC_ENTERPRISE_MODE: ${PUBLIC_ENTERPRISE_MODE:-true}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-cybertron}:${POSTGRES_PASSWORD:-cybertron_dev_password}@postgres:5432/${POSTGRES_DB:-cybertron}}
+      DB_SSL_MODE: disable
+      DB_AUTO_MIGRATE: 'true'
+      REPORT_STORAGE_DRIVER: ${REPORT_STORAGE_DRIVER:-local}
+      REPORT_STORAGE_LOCAL_PATH: ${REPORT_STORAGE_LOCAL_PATH:-/srv/cybertron/uploads/reports}
+      REPORT_UPLOAD_MAX_BYTES: ${REPORT_UPLOAD_MAX_BYTES:-15728640}
+      REPORT_UPLOAD_ALLOWED_MIME_TYPES: ${REPORT_UPLOAD_ALLOWED_MIME_TYPES:-application/pdf,text/csv,application/json}
+      REPORT_RETENTION_DAYS: ${REPORT_RETENTION_DAYS:-365}
+      REPORT_RETENTION_CLEANUP_INTERVAL_MS: ${REPORT_RETENTION_CLEANUP_INTERVAL_MS:-21600000}
+      REPORT_RETENTION_BATCH_SIZE: ${REPORT_RETENTION_BATCH_SIZE:-200}
+      REPORT_STORAGE_S3_BUCKET: ${REPORT_STORAGE_S3_BUCKET:-}
+      REPORT_STORAGE_S3_REGION: ${REPORT_STORAGE_S3_REGION:-us-east-1}
+      REPORT_STORAGE_S3_ENDPOINT: ${REPORT_STORAGE_S3_ENDPOINT:-}
+      REPORT_STORAGE_S3_ACCESS_KEY_ID: ${REPORT_STORAGE_S3_ACCESS_KEY_ID:-}
+      REPORT_STORAGE_S3_SECRET_ACCESS_KEY: ${REPORT_STORAGE_S3_SECRET_ACCESS_KEY:-}
+      REPORT_STORAGE_S3_FORCE_PATH_STYLE: ${REPORT_STORAGE_S3_FORCE_PATH_STYLE:-true}
+      LLM_PROVIDER: ${LLM_PROVIDER:-none}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+      LLM_REQUEST_TIMEOUT_MS: ${LLM_REQUEST_TIMEOUT_MS:-120000}
+      LLM_RATE_LIMIT_WINDOW_MS: ${LLM_RATE_LIMIT_WINDOW_MS:-3600000}
+      LLM_RATE_LIMIT_MAX_CALLS: ${LLM_RATE_LIMIT_MAX_CALLS:-100}
+      NVD_FEED_URL: ${NVD_FEED_URL:-https://services.nvd.nist.gov/rest/json/cves/2.0}
+      NVD_API_KEY: ${NVD_API_KEY:-}
+      NVD_REQUEST_TIMEOUT_MS: ${NVD_REQUEST_TIMEOUT_MS:-20000}
+      NVD_RESULTS_PER_PAGE: ${NVD_RESULTS_PER_PAGE:-200}
+      NVD_SYNC_MAX_ENTRIES: ${NVD_SYNC_MAX_ENTRIES:-400}
+      NVD_SYNC_BACKOFF_BASE_MS: ${NVD_SYNC_BACKOFF_BASE_MS:-30000}
+      NVD_SYNC_BACKOFF_MAX_MS: ${NVD_SYNC_BACKOFF_MAX_MS:-900000}
+      URLHAUS_ENABLED: ${URLHAUS_ENABLED:-false}
+      URLHAUS_REQUEST_TIMEOUT_MS: ${URLHAUS_REQUEST_TIMEOUT_MS:-15000}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    ports:
+      - '${BACKEND_PORT:-8001}:8001'
+    volumes:
+      - ./uploads:/srv/cybertron/uploads
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8001/v1/system/readiness']
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 12s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: app/frontend/Dockerfile
+      target: default
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - '${FRONTEND_PORT:-3000}:8080'
+
+volumes:
+  postgres_data_dev:

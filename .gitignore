@@ -1,0 +1,43 @@
+# Node modules
+node_modules/
+**/node_modules/
+
+# Build artifacts
+build/
+cover/
+coverage/
+workspace/app/frontend/dist/
+workspace/.runtime/
+workspace/.runtime/**
+workspace/build/
+workspace/uploads/
+workspace/uploads/**
+workspace/ml/outputs/
+workspace/ml/outputs/**
+
+# Logs and process files
+*.log
+*.pid
+vite-dev.log
+
+# Env files
+.env
+.env.*
+!.env.example
+!workspace/.env.production.example
+!workspace/.env.production.local.example
+
+# Tool caches
+**/.vite/
+**/.cache/
+**/.nyc_output/
+**/.coverage-tmp/
+**/*.tsbuildinfo
+**/__pycache__/
+**/*.pyc
+**/.backup/
+.playwright-cli/
+backups/
+output/
+.DS_Store
+Thumbs.db

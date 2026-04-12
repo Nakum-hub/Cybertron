@@ -1,0 +1,118 @@
+services:
+  postgres:
+    image: postgres:16.8-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cybertron
+      POSTGRES_USER: cybertron
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # ports intentionally omitted — postgres should only be reachable inside the
+    # Docker network.  Override in docker-compose.dev.yml for local access.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cybertron -d cybertron"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    networks:
+      - cybertron-net
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-}
+    volumes:
+      - redisdata:/data
+    # ports intentionally omitted — redis should only be reachable inside the
+    # Docker network.  Override in docker-compose.dev.yml for local access.
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    networks:
+      - cybertron-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: app/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://cybertron:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/cybertron
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
+      HOST: 0.0.0.0
+      PORT: 8001
+    volumes:
+      - uploads:/srv/cybertron/backend/uploads
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8001/v1/system/readiness"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    networks:
+      - cybertron-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: app/frontend/Dockerfile
+      target: default
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    networks:
+      - cybertron-net
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  uploads:
+    driver: local
+
+networks:
+  cybertron-net:
+    driver: bridge

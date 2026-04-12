@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-03-12T16:06:58.007Z",
+  "output": "C:\\app\\Cybertron\\workspace\\ml\\data\\cybertron_bootstrap_sft.jsonl",
+  "records": 11,
+  "taskCounts": {
+    "risk_explanation": 3,
+    "policy_draft": 4,
+    "threat_summary": 4
+  },
+  "source": "cybertron-bootstrap-rule-template",
+  "aiGenerated": false,
+  "disclaimer": "Bootstrap supervised data generated from Cybertron rule-based and template-based fallbacks. Useful for warm-start experiments and eval harnesses, not a substitute for human-reviewed production training data."
+}

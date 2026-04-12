@@ -1,0 +1,28 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+app/frontend/dist/
+build/
+cover/
+
+# Runtime artifacts
+*.log
+*.pid
+.DS_Store
+Thumbs.db
+
+# Local env overrides
+.env
+.env.local
+.env.*.local
+app/backend/.env
+app/frontend/.env
+
+# Tooling caches
+app/frontend/*.tsbuildinfo
+app/frontend/.vite/
+uploads/

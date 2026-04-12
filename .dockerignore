@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+build
+cover
+coverage
+workspace/build
+workspace/app/frontend/dist
+workspace/uploads
+workspace/uploads/**
+**/.vite
+**/.cache
+**/*.log
+**/.env
+**/.env.local
+**/.env.*.local

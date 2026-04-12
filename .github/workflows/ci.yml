@@ -1,0 +1,159 @@
+name: cybertron-ci
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cybertron
+          POSTGRES_USER: cybertron
+          POSTGRES_PASSWORD: cybertron_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cybertron -d cybertron"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 8
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 8
+    env:
+      CI: true
+      AUTH_MODE: jwt_hs256
+      JWT_SECRET: ci-jwt-secret
+      ALLOW_INSECURE_DEMO_AUTH: false
+      ALLOW_PUBLIC_REGISTRATION: true
+      DATABASE_URL: postgresql://cybertron:cybertron_ci_password@127.0.0.1:5432/cybertron
+      DB_SSL_MODE: disable
+      REDIS_URL: redis://127.0.0.1:6379
+      REQUIRE_DATABASE_FOR_CI: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            workspace/app/frontend/package-lock.json
+            workspace/app/backend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: npm ci --prefix workspace/app/frontend
+
+      - name: Install Backend Dependencies
+        run: npm ci --prefix workspace/app/backend
+
+      - name: Guard Repo Hygiene
+        run: |
+          set -euo pipefail
+          forbidden="$(git ls-files | grep -E '(^|/)(node_modules|dist|build|cover|uploads)(/|$)' || true)"
+          if [ -n "$forbidden" ]; then
+            echo "Forbidden tracked artifacts detected:"
+            echo "$forbidden"
+            exit 1
+          fi
+
+      - name: Release Preflight
+        run: npm run qa:release --prefix workspace
+
+      - name: Run Full QA
+        run: npm run qa:full --prefix workspace
+
+      - name: Run Distributed Auth + Rate QA
+        run: npm run qa:backend:distributed --prefix workspace
+
+  backend-coverage:
+    name: Backend Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workspace/app/backend/package-lock.json
+      - name: Install backend dependencies
+        run: npm ci --prefix workspace/app/backend
+      - name: Run backend coverage
+        run: npm run coverage --prefix workspace/app/backend
+      - name: Upload backend coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: workspace/app/backend/coverage
+      - name: Upload backend coverage to Codecov
+        if: ${{ secrets.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: workspace/app/backend/coverage/lcov.info
+          flags: backend
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+      - name: Note missing Codecov token
+        if: ${{ secrets.CODECOV_TOKEN == '' }}
+        run: echo "Codecov upload skipped because CODECOV_TOKEN is not configured." >> "$GITHUB_STEP_SUMMARY"
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install backend dependencies
+        run: npm ci --no-fund --prefix workspace/app/backend
+      - name: Install frontend dependencies
+        run: npm ci --no-fund --prefix workspace/app/frontend
+      - name: Backend dependency audit
+        run: npm audit --audit-level=high --prefix workspace/app/backend
+      - name: Frontend dependency audit
+        run: npm audit --audit-level=high --prefix workspace/app/frontend
+
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    needs: [quality-gate]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -f workspace/app/backend/Dockerfile -t cybertron-backend:ci workspace
+      - name: Build frontend image
+        run: docker build -f workspace/app/frontend/Dockerfile --target default -t cybertron-frontend:ci workspace
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cybertron-backend:ci
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cybertron-frontend:ci
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true

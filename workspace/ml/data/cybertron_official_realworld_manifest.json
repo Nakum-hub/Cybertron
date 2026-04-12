@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "startedAt": "2026-03-14T15:36:59.820Z",
+  "finishedAt": "2026-03-14T15:37:00.976Z",
+  "output": "/teamspace/studios/this_studio/Cybertron - Copy/workspace/ml/data/cybertron_official_realworld_sft.jsonl",
+  "taskCounts": {
+    "threat_summary": 4227,
+    "risk_explanation": 875,
+    "policy_draft": 60
+  },
+  "sourceCounts": {
+    "kevCatalogEntries": 1542,
+    "nvdCriticalEntries": 1200,
+    "nvdHighEntries": 1500,
+    "mitreAttackObjects": 24771,
+    "oscalFamilies": 20
+  },
+  "cacheDir": "/teamspace/studios/this_studio/Cybertron - Copy/workspace/ml/cache/official-sources",
+  "sources": {
+    "kev": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+    "nvd": "https://services.nvd.nist.gov/rest/json/cves/2.0",
+    "mitreAttack": "https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/enterprise-attack.json",
+    "nistOscal": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json"
+  }
+}

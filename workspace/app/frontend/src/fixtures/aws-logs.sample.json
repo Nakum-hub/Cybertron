@@ -1,0 +1,31 @@
+{
+  "records": [
+    {
+      "severity": "critical",
+      "category": "vulnerability",
+      "assetId": "edge-gateway-01",
+      "title": "Externally exposed admin endpoint without MFA",
+      "vulnerabilityScore": 9.3,
+      "exposureScore": 8.8,
+      "misconfigurationScore": 8.1
+    },
+    {
+      "severity": "high",
+      "category": "misconfiguration",
+      "assetId": "prod-s3-bucket",
+      "title": "Bucket policy permits broad read access",
+      "vulnerabilityScore": 6.7,
+      "exposureScore": 7.4,
+      "misconfigurationScore": 8.6
+    },
+    {
+      "severity": "medium",
+      "category": "identity",
+      "assetId": "iam-role-ci-runner",
+      "title": "Role policy grants wildcard action on non-prod resources",
+      "vulnerabilityScore": 5.8,
+      "exposureScore": 5.1,
+      "misconfigurationScore": 6.2
+    }
+  ]
+}

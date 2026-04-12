@@ -1,0 +1,37 @@
+services:
+  edge:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_started
+    ports:
+      - '${EDGE_HTTP_PORT:-80}:80'
+      - '${EDGE_HTTPS_PORT:-443}:443'
+    environment:
+      CYBERTRON_DOMAIN: ${CYBERTRON_DOMAIN:?set_CYBERTRON_DOMAIN}
+      CYBERTRON_TLS_EMAIL: ${CYBERTRON_TLS_EMAIL:?set_CYBERTRON_TLS_EMAIL}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+volumes:
+  caddy_data:
+  caddy_config:
