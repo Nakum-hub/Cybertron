@@ -20,11 +20,14 @@ export default defineConfig({
     pure: process.env.NODE_ENV === 'production' ? ['console.log', 'console.debug'] : [],
   },
   build: {
-    chunkSizeWarningLimit: 1100,
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'query-vendor': ['@tanstack/react-query'],
           'three-vendor': ['three', '@react-three/fiber', '@react-three/drei'],
+          'chart-vendor': ['recharts'],
         },
       },
     },

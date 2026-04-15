@@ -6,6 +6,7 @@ function normalizeProvider(value) {
   const normalized = String(value || 'none').trim().toLowerCase();
   if (normalized === 'openai') return 'openai';
   if (normalized === 'ollama') return 'ollama';
+  if (normalized === 'vllm') return 'vllm';
   return 'none';
 }
 
@@ -107,16 +108,20 @@ function buildUnconfiguredRuntime(provider, config, reason) {
     ? toSafeText(config.openaiModel) || 'gpt-4.1-mini'
     : provider === 'ollama'
       ? toSafeText(config.ollamaModel) || 'llama3.1'
-      : null;
+      : provider === 'vllm'
+        ? toSafeText(config.vllmModel) || 'cybertron'
+        : null;
   const endpoint = provider === 'openai'
     ? sanitizeEndpointLabel(config.openaiBaseUrl || 'https://api.openai.com/v1')
     : provider === 'ollama'
       ? sanitizeEndpointLabel(config.ollamaUrl || '')
-      : '';
+      : provider === 'vllm'
+        ? sanitizeEndpointLabel(config.vllmBaseUrl || 'http://localhost:8000/v1')
+        : '';
 
   return {
     provider,
-    deployment: 'fallback_only',
+    deployment: provider === 'vllm' ? 'self_hosted_openai_compatible' : 'fallback_only',
     configured: false,
     reachable: false,
     model,
@@ -151,6 +156,14 @@ function ensureConfigured(provider, config) {
       503,
       'LLM_NOT_CONFIGURED',
       'OLLAMA_URL is required when LLM_PROVIDER=ollama.'
+    );
+  }
+
+  if (provider === 'vllm' && !toSafeText(config.vllmBaseUrl)) {
+    throw new ServiceError(
+      503,
+      'LLM_NOT_CONFIGURED',
+      'LLM_VLLM_BASE_URL is required when LLM_PROVIDER=vllm.'
     );
   }
 }
@@ -529,6 +542,129 @@ async function probeOllamaRuntime(config) {
   }
 }
 
+async function probeVllmRuntime(config) {
+  const baseUrl = String(config.vllmBaseUrl || 'http://localhost:8000/v1').replace(/\/+$/, '');
+  const endpoint = sanitizeEndpointLabel(baseUrl);
+  const model = toSafeText(config.vllmModel) || 'cybertron';
+  const checkedAt = new Date().toISOString();
+  let sshTunnelSuggested = false;
+
+  try {
+    const parsed = new URL(baseUrl);
+    sshTunnelSuggested = isLocalLikeHostname(parsed.hostname);
+  } catch {
+    return {
+      provider: 'vllm',
+      deployment: 'self_hosted_openai_compatible',
+      configured: true,
+      reachable: false,
+      model,
+      endpoint,
+      checkedAt,
+      latencyMs: null,
+      availableModels: [],
+      sshTunnelSuggested,
+      reason: 'LLM_VLLM_BASE_URL is invalid.',
+    };
+  }
+
+  const url = `${baseUrl}/models`;
+  const apiKey = config.vllmApiKey || 'cybertron-local-key';
+  const { controller, timeout } = createTimeoutController(config.llmRequestTimeoutMs);
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: controller.signal,
+    });
+
+    const rawBody = await response.text();
+    if (rawBody.length > 2_000_000) {
+      return {
+        provider: 'vllm',
+        deployment: 'self_hosted_openai_compatible',
+        configured: true,
+        reachable: false,
+        model,
+        endpoint,
+        checkedAt,
+        latencyMs: Date.now() - startedAt,
+        availableModels: [],
+        sshTunnelSuggested,
+        reason: 'vLLM runtime probe returned an oversized response.',
+      };
+    }
+
+    let payload = null;
+    try {
+      payload = rawBody ? JSON.parse(rawBody) : null;
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      return {
+        provider: 'vllm',
+        deployment: 'self_hosted_openai_compatible',
+        configured: true,
+        reachable: false,
+        model,
+        endpoint,
+        checkedAt,
+        latencyMs: Date.now() - startedAt,
+        availableModels: [],
+        sshTunnelSuggested,
+        reason: `vLLM runtime probe returned ${response.status}.`,
+      };
+    }
+
+    const availableModels = Array.isArray(payload?.data)
+      ? payload.data
+        .map(item => toSafeText(item?.id))
+        .filter(Boolean)
+        .slice(0, 12)
+      : [];
+
+    return {
+      provider: 'vllm',
+      deployment: 'self_hosted_openai_compatible',
+      configured: true,
+      reachable: true,
+      model,
+      endpoint,
+      checkedAt,
+      latencyMs: Date.now() - startedAt,
+      availableModels,
+      sshTunnelSuggested,
+      reason: null,
+      loraAdapter: 'cybertron-qwen25-1_5b-t4-lora',
+    };
+  } catch (error) {
+    const reason = error?.name === 'AbortError'
+      ? 'vLLM runtime probe timed out.'
+      : 'vLLM runtime probe failed.';
+    return {
+      provider: 'vllm',
+      deployment: 'self_hosted_openai_compatible',
+      configured: true,
+      reachable: false,
+      model,
+      endpoint,
+      checkedAt,
+      latencyMs: Date.now() - startedAt,
+      availableModels: [],
+      sshTunnelSuggested,
+      reason,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function probeLlmRuntime(config) {
   const provider = normalizeProvider(config.llmProvider);
   try {
@@ -543,6 +679,10 @@ async function probeLlmRuntime(config) {
 
   if (provider === 'openai') {
     return probeOpenAiRuntime(config);
+  }
+
+  if (provider === 'vllm') {
+    return probeVllmRuntime(config);
   }
 
   return probeOllamaRuntime(config);
@@ -584,6 +724,16 @@ function createLlmProvider(config, log = () => {}) {
       let result;
       if (provider === 'openai') {
         result = await callOpenAi(config, promptPayload);
+      } else if (provider === 'vllm') {
+        // vLLM exposes an OpenAI-compatible /v1/chat/completions endpoint
+        const vllmConfig = {
+          ...config,
+          openaiBaseUrl: config.vllmBaseUrl || config.openaiBaseUrl,
+          openaiApiKey: config.vllmApiKey || config.openaiApiKey || 'vllm',
+          openaiModel: config.vllmModel || config.openaiModel || 'default',
+        };
+        result = await callOpenAi(vllmConfig, promptPayload);
+        result.provider = 'vllm';
       } else {
         result = await callOllama(config, promptPayload);
       }

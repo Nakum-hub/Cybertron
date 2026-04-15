@@ -1,4 +1,4 @@
-const { query } = require('./database');
+const { query, queryWithTenant } = require('./database');
 const { sanitizeTenant, toSafeInteger } = require('./validators');
 const { appendAuditLog } = require('./audit-log');
 const { ServiceError } = require('./auth-service');

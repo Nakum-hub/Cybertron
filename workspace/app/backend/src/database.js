@@ -40,6 +40,19 @@ function getPool(config) {
     console.error('[database] Idle client error:', err.message);
   });
 
+  // P3-4: Pool monitoring events
+  pool.on('connect', () => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[database] pool.connect', { total: pool.totalCount, idle: pool.idleCount });
+    }
+  });
+
+  pool.on('remove', () => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[database] pool.remove', { total: pool.totalCount, idle: pool.idleCount });
+    }
+  });
+
   return pool;
 }
 

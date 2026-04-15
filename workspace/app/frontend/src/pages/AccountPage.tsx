@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, BadgeCheck, Building2, CreditCard, Github, LayoutDashboard, LogOut, ShieldCheck, UserRound, Users } from 'lucide-react';
+import { Activity, ArrowRight, BadgeCheck, Building2, CreditCard, Github, LayoutDashboard, LogOut, Settings, Shield, ShieldCheck, UserRound, Users } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuthStatus } from '@/hooks/use-auth-status';
@@ -431,6 +431,55 @@ export default function AccountPage() {
                     </div>
                   )}
                 </div>
+              </div>
+            </section>
+
+            {/* Quick Actions */}
+            <section className="mt-8">
+              <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Link
+                  to="/account/team"
+                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                >
+                  <Users className="h-5 w-5 text-cyan-300 flex-none" />
+                  <div>
+                    <p className="text-sm font-medium text-white">Team Management</p>
+                    <p className="text-xs text-slate-500">Invite &amp; manage members</p>
+                  </div>
+                </Link>
+                <Link
+                  to="/account/api-keys"
+                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                >
+                  <Shield className="h-5 w-5 text-cyan-300 flex-none" />
+                  <div>
+                    <p className="text-sm font-medium text-white">API Keys</p>
+                    <p className="text-xs text-slate-500">Create &amp; revoke keys</p>
+                  </div>
+                </Link>
+                <Link
+                  to="/account/notifications"
+                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                >
+                  <Activity className="h-5 w-5 text-cyan-300 flex-none" />
+                  <div>
+                    <p className="text-sm font-medium text-white">Notifications</p>
+                    <p className="text-xs text-slate-500">Alert preferences</p>
+                  </div>
+                </Link>
+                {showTeamInsights && (
+                  <Link
+                    to="/admin"
+                    className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                  >
+                    <Settings className="h-5 w-5 text-cyan-300 flex-none" />
+                    <div>
+                      <p className="text-sm font-medium text-white">Admin Dashboard</p>
+                      <p className="text-xs text-slate-500">Workspace settings</p>
+                    </div>
+                  </Link>
+                )}
               </div>
             </section>
           </main>

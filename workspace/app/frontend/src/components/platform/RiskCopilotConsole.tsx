@@ -104,9 +104,13 @@ export default function RiskCopilotConsole({
             ))}
           </div>
         ) : (
-          <p className="text-sm text-slate-400">
-            No risk findings are available yet for this tenant.
-          </p>
+          <div className="rounded-lg border border-dashed border-white/10 bg-[#08111f] p-6 text-center">
+            <Shield className="mx-auto mb-2 h-8 w-8 text-slate-600" />
+            <p className="text-sm font-medium text-white">No risk findings available yet</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Connect AWS CloudTrail, Azure Activity, or Wazuh log sources to start generating risk findings for this tenant.
+            </p>
+          </div>
         )}
       </section>
     </div>

@@ -1165,6 +1165,252 @@ function buildOpenApiSpec(config) {
           responses: { 200: { description: 'OpenAPI JSON' } },
         },
       },
+
+      // ─── P1/P2: Admin, Billing & Notification Routes ──────────────
+      '/admin/users': {
+        get: {
+          summary: 'List users for workspace (tenant admin)',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ in: 'query', name: 'tenant', schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'User list' },
+            403: { description: 'Admin role required' },
+          },
+        },
+      },
+      '/admin/invites': {
+        get: {
+          summary: 'List workspace invites',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ in: 'query', name: 'tenant', schema: { type: 'string' } }],
+          responses: { 200: { description: 'Invite list' } },
+        },
+        post: {
+          summary: 'Create workspace invite',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['email', 'role'],
+                  properties: {
+                    email: { type: 'string', format: 'email' },
+                    role: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'Invite created' },
+            403: { description: 'Admin role required' },
+          },
+        },
+      },
+      '/admin/invites/{inviteId}': {
+        delete: {
+          summary: 'Revoke workspace invite',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ in: 'path', name: 'inviteId', required: true, schema: { type: 'integer' } }],
+          responses: {
+            204: { description: 'Invite revoked' },
+            404: { description: 'Invite not found' },
+          },
+        },
+      },
+      '/invites/accept': {
+        post: {
+          summary: 'Accept workspace invite (public endpoint)',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['token'],
+                  properties: {
+                    token: { type: 'string' },
+                    userId: { type: 'integer' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Invite accepted' },
+            400: { description: 'Invalid or expired token' },
+          },
+        },
+      },
+      '/admin/connectors': {
+        get: {
+          summary: 'List connector configurations',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ in: 'query', name: 'tenant', schema: { type: 'string' } }],
+          responses: { 200: { description: 'Connector config list' } },
+        },
+      },
+      '/admin/connectors/{connector}': {
+        put: {
+          summary: 'Upsert connector configuration',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ in: 'path', name: 'connector', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    apiUrl: { type: 'string' },
+                    apiToken: { type: 'string' },
+                    enabled: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Connector config saved' },
+            403: { description: 'Admin role required' },
+          },
+        },
+        delete: {
+          summary: 'Delete connector configuration',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ in: 'path', name: 'connector', required: true, schema: { type: 'string' } }],
+          responses: { 204: { description: 'Connector config deleted' } },
+        },
+      },
+      '/admin/connectors/{connector}/test': {
+        post: {
+          summary: 'Test connector connectivity',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ in: 'path', name: 'connector', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Connectivity test result' },
+            403: { description: 'Admin role required' },
+          },
+        },
+      },
+      '/admin/api-keys': {
+        get: {
+          summary: 'List API keys for user',
+          security: [{ bearerAuth: [] }],
+          responses: { 200: { description: 'API key list' } },
+        },
+        post: {
+          summary: 'Create API key',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name'],
+                  properties: {
+                    name: { type: 'string' },
+                    scopes: { type: 'array', items: { type: 'string' } },
+                    expiresIn: { type: 'string', description: 'Duration string e.g. 30d, 90d' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'API key created (secret shown once)' },
+          },
+        },
+      },
+      '/admin/api-keys/{keyId}': {
+        delete: {
+          summary: 'Revoke API key',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ in: 'path', name: 'keyId', required: true, schema: { type: 'integer' } }],
+          responses: { 204: { description: 'API key revoked' } },
+        },
+      },
+      '/billing/checkout': {
+        post: {
+          summary: 'Create Stripe checkout session',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    plan: { type: 'string', enum: ['pro', 'enterprise'] },
+                    billingCycle: { type: 'string', enum: ['monthly', 'annual'] },
+                    priceId: { type: 'string', description: 'Direct Stripe price ID override' },
+                    successUrl: { type: 'string' },
+                    cancelUrl: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Stripe checkout session URL' },
+            503: { description: 'Stripe not configured' },
+          },
+        },
+      },
+      '/billing/status': {
+        get: {
+          summary: 'Get tenant subscription status',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ in: 'query', name: 'tenant', schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Subscription status payload' },
+          },
+        },
+      },
+      '/billing/webhook': {
+        post: {
+          summary: 'Stripe webhook handler (signature-verified, no auth)',
+          responses: {
+            200: { description: 'Webhook processed' },
+            400: { description: 'Invalid signature' },
+          },
+        },
+      },
+      '/notifications/preferences': {
+        get: {
+          summary: 'Get notification preferences for authenticated user',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Notification preferences payload' },
+          },
+        },
+        patch: {
+          summary: 'Update notification preferences',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    emailOnCritical: { type: 'boolean' },
+                    emailOnHigh: { type: 'boolean' },
+                    emailOnResolved: { type: 'boolean' },
+                    inAppAll: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Preferences updated' },
+          },
+        },
+      },
     },
   };
 }

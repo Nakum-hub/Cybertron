@@ -49,11 +49,20 @@ export default function AttackMapPanel({
           {errorMessage(attackMapQuery.error, 'Attack map data is unavailable.')}
         </p>
       ) : !nodes.length ? (
-        <div className="rounded-lg border border-dashed border-white/10 bg-[#08111f] p-5">
-          <p className="text-sm font-medium text-white">No geo-tagged alert data available</p>
-          <p className="mt-2 text-sm text-slate-400">
-            Populate alert `raw_payload` with `source_geo_lat`, `source_geo_lon`, `dest_geo_lat`, and `dest_geo_lon` to draw real source-to-destination paths.
+        <div className="rounded-lg border border-dashed border-white/10 bg-[#08111f] p-8 text-center">
+          <MapPinned className="mx-auto mb-3 h-10 w-10 text-slate-600" />
+          <p className="text-base font-semibold text-white">Connect a data source to see live threat activity</p>
+          <p className="mt-2 text-sm text-slate-400 max-w-md mx-auto">
+            Wazuh, MISP, OpenCTI, or TheHive connections will populate this map with real-time geo-tagged attack paths.
+            Alert payloads must include <code className="text-xs bg-white/5 px-1 py-0.5 rounded">source_geo_lat</code>, <code className="text-xs bg-white/5 px-1 py-0.5 rounded">source_geo_lon</code>, <code className="text-xs bg-white/5 px-1 py-0.5 rounded">dest_geo_lat</code>, and <code className="text-xs bg-white/5 px-1 py-0.5 rounded">dest_geo_lon</code>.
           </p>
+          <a
+            href="/platform/connectors"
+            className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-sm font-semibold hover:from-cyan-500 hover:to-blue-500 transition-all duration-200"
+          >
+            <Globe2 className="h-4 w-4" />
+            Configure Connectors
+          </a>
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">

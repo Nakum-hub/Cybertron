@@ -196,6 +196,30 @@ services:
       THEHIVE_API_URL: ${THEHIVE_API_URL:-}
       THEHIVE_API_TOKEN: ${THEHIVE_API_TOKEN:-}
       CONNECTOR_TIMEOUT_MS: ${CONNECTOR_TIMEOUT_MS:-6000}
+      CONNECTOR_SECRETS_KEY: ${CONNECTOR_SECRETS_KEY:-}
+
+      # Email transport
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-noreply@cybertron.io}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Cybertron}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+
+      # Stripe billing
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_ID_PRO_MONTHLY: ${STRIPE_PRICE_ID_PRO_MONTHLY:-}
+      STRIPE_PRICE_ID_PRO_ANNUAL: ${STRIPE_PRICE_ID_PRO_ANNUAL:-}
+      STRIPE_PRICE_ID_ENTERPRISE_MONTHLY: ${STRIPE_PRICE_ID_ENTERPRISE_MONTHLY:-}
+
+      # vLLM fine-tuned Cybertron LoRA model (requires vllm service)
+      LLM_VLLM_BASE_URL: ${LLM_VLLM_BASE_URL:-http://vllm:8000/v1}
+      LLM_VLLM_MODEL: ${LLM_VLLM_MODEL:-cybertron}
+      LLM_VLLM_API_KEY: ${LLM_VLLM_API_KEY:-cybertron-local-key}
 
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
@@ -272,3 +296,50 @@ volumes:
 networks:
   default:
     name: cybertron-prod
+
+# ────────────────────────────────────────────────────────────────────────
+# OPTIONAL: vLLM fine-tuned Cybertron model serving (GPU required)
+# Uncomment below to deploy the Cybertron LoRA fine-tuned model.
+# Requires NVIDIA GPU runtime.
+# Base model: Qwen/Qwen2.5-1.5B-Instruct
+# LoRA adapter: ml/outputs/cybertron-qwen25-1_5b-t4-lora/checkpoint-40
+# Served via OpenAI-compatible API at http://vllm:8000/v1
+# ────────────────────────────────────────────────────────────────────────
+#  vllm:
+#    image: vllm/vllm-openai:latest
+#    restart: unless-stopped
+#    runtime: nvidia
+#    environment:
+#      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+#    volumes:
+#      - ./ml/outputs/cybertron-qwen25-1_5b-t4-lora/checkpoint-40:/adapters/cybertron-lora:ro
+#    command: >
+#      --model Qwen/Qwen2.5-1.5B-Instruct
+#      --served-model-name cybertron-local
+#      --api-key ${LLM_VLLM_API_KEY:-cybertron-local-key}
+#      --host 0.0.0.0
+#      --port 8000
+#      --max-model-len 4096
+#      --max-lora-rank 64
+#      --enable-lora
+#      --lora-modules cybertron=/adapters/cybertron-lora
+#      --gpu-memory-utilization 0.82
+#      --max-num-seqs 8
+#      --enforce-eager
+#    expose:
+#      - '8000'
+#    healthcheck:
+#      test: ['CMD-SHELL', 'curl -sf http://localhost:8000/health || exit 1']
+#      interval: 30s
+#      timeout: 10s
+#      retries: 5
+#      start_period: 120s
+#    deploy:
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: 1
+#              capabilities: [gpu]
+#        limits:
+#          memory: 8G

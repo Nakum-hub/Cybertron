@@ -382,9 +382,13 @@ export default function ThreatCommandConsole({
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-slate-400">
-                  Threat AI runtime visibility has not returned data yet.
-                </p>
+                <div className="rounded-lg border border-dashed border-white/10 bg-[#08111f] p-5 text-center">
+                  <Radar className="mx-auto mb-2 h-8 w-8 text-slate-600" />
+                  <p className="text-sm font-medium text-white">AI runtime not configured</p>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Set <code className="bg-white/5 px-1 py-0.5 rounded text-[11px]">LLM_PROVIDER</code> to <code className="bg-white/5 px-1 py-0.5 rounded text-[11px]">openai</code>, <code className="bg-white/5 px-1 py-0.5 rounded text-[11px]">ollama</code>, or <code className="bg-white/5 px-1 py-0.5 rounded text-[11px]">vllm</code> in your environment to enable AI-powered threat analysis.
+                  </p>
+                </div>
               )}
             </section>
 
@@ -431,7 +435,13 @@ export default function ThreatCommandConsole({
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-slate-400">No CVE entries are ingested yet.</p>
+                <div className="rounded-lg border border-dashed border-white/10 bg-[#08111f] p-5 text-center">
+                  <MapPinned className="mx-auto mb-2 h-8 w-8 text-slate-600" />
+                  <p className="text-sm font-medium text-white">No CVE entries ingested yet</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Run a CVE sync or connect an NVD feed to start populating threat intelligence.
+                  </p>
+                </div>
               )}
             </section>
           </div>

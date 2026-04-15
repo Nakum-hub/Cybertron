@@ -25,6 +25,17 @@ const BlogPage = lazy(() => import('./pages/BlogPage'));
 const PricingPage = lazy(() => import('./pages/PricingPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
+// P1 new pages
+const PasswordResetPage = lazy(() => import('./pages/PasswordResetPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
+const TeamPage = lazy(() => import('./pages/TeamPage'));
+const ConnectorsPage = lazy(() => import('./pages/ConnectorsPage'));
+const BillingSuccessPage = lazy(() => import('./pages/BillingSuccessPage'));
+const BillingCancelPage = lazy(() => import('./pages/BillingCancelPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const ApiKeysPage = lazy(() => import('./pages/ApiKeysPage'));
+
 const stableQueryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -61,6 +72,15 @@ export default function App() {
           <Route path="/platform/:appId" element={<Platform />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/auth/error" element={<AuthError />} />
+          <Route path="/auth/reset-password" element={<PasswordResetPage />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/account/team" element={<TeamPage />} />
+          <Route path="/account/api-keys" element={<ApiKeysPage />} />
+          <Route path="/account/notifications" element={<NotificationsPage />} />
+          <Route path="/platform/connectors" element={<ConnectorsPage />} />
+          <Route path="/billing/success" element={<BillingSuccessPage />} />
+          <Route path="/billing/cancel" element={<BillingCancelPage />} />
           <Route path="/status" element={<StatusPage />} />
           <Route path="/diagnostics" element={<InternalRouteGate title="Platform Diagnostics"><StatusPage /></InternalRouteGate>} />
           <Route path="/docs" element={<InternalRouteGate title="Developer Documentation"><DocsPage /></InternalRouteGate>} />

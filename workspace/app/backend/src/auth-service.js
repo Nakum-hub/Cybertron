@@ -6,6 +6,7 @@ const { normalizeRole, hasRoleAccess } = require('./platform-registry');
 const { sanitizeTenant } = require('./validators');
 const { appendAuditLog } = require('./audit-log');
 const { isDisposableEmail } = require('./disposable-domains');
+const { sendPasswordResetEmail } = require('./email-service');
 
 class ServiceError extends Error {
   constructor(statusCode, code, message, details = null) {
@@ -1269,12 +1270,22 @@ async function requestPasswordReset(config, payload, contextMeta = {}) {
     payload: {},
   });
 
+  // P1-2: Send password reset email (never leak token in API response)
+  const resetUrl = `${config.frontendOrigin}/auth/reset-password?token=${rawResetToken}&tenant=${tenantSlug}`;
+  try {
+    await sendPasswordResetEmail(config, {
+      to: email,
+      resetUrl,
+      tenantName: tenantSlug,
+    });
+  } catch (emailError) {
+    console.warn('[auth] Failed to send password reset email:', emailError.message);
+    // Do NOT throw — user should not know whether email was sent or not
+  }
+
   return {
     accepted: true,
-    message: 'If the account exists, a reset token has been issued.',
-    // For local/dev only. In production callers should integrate with email provider.
-    resetToken: config.environment === 'production' ? undefined : rawResetToken,
-    expiresAt: config.environment === 'production' ? undefined : expiresAt,
+    message: 'If that email exists, a reset link was sent.',
   };
 }
 

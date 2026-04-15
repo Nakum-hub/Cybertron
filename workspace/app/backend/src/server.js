@@ -3,7 +3,7 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { pipeline } = require('node:stream/promises');
 
-const { config, validateRuntimeConfig } = require('./config');
+const { config, validateRuntimeConfig, enforceProductionStartupGuard } = require('./config');
 const { log } = require('./logger');
 const { createSessionStore, parseBearerToken } = require('./session-store');
 const { resolveTokenSession } = require('./auth-provider');
@@ -231,6 +231,7 @@ const { registerRoutes: registerThreatIntelRoutes } = require('./modules/threat-
 const { registerRoutes: registerAuthRoutes } = require('./routes/auth');
 const { registerRoutes: registerSystemRoutes } = require('./routes/system');
 const { registerRoutes: registerCrudRoutes } = require('./routes/crud');
+const { registerRoutes: registerAdminRoutes } = require('./routes/admin');
 const { extractContext, startRequestSpan, endRequestSpan } = require('./tracing');
 
 const sessionStore = createSessionStore({
@@ -854,19 +855,42 @@ async function buildDependencyStatus() {
     checkStorageDependency(),
     checkRedisHealth(config, log),
   ]);
-  return { database, storage, redis };
+
+  // P2-3: LLM health check
+  let llm = { configured: false, status: 'not_configured', latencyMs: 0 };
+  try {
+    if (config.llmProvider && config.llmProvider !== 'none') {
+      llm = await probeLlmRuntime(config);
+      llm.status = llm.reachable ? 'healthy' : 'unavailable';
+    }
+  } catch {
+    llm = { configured: true, status: 'unavailable', latencyMs: 0 };
+  }
+
+  return { database, storage, redis, llm };
 }
 
 function sanitizeDependencyStatusForResponse(dependencies) {
   const database = dependencies?.database || {};
   const storage = dependencies?.storage || {};
   const redis = dependencies?.redis || {};
+  const llm = dependencies?.llm || {};
+
+  // P3-4: DB pool stats
+  const { getPool } = require('./database');
+  const pool = getPool(config);
+  const poolStats = pool ? {
+    total: pool.totalCount || 0,
+    idle: pool.idleCount || 0,
+    waiting: pool.waitingCount || 0,
+  } : null;
 
   return {
     database: {
       configured: Boolean(database.configured),
       status: String(database.status || 'unknown'),
       latencyMs: Number(database.latencyMs || 0),
+      ...(poolStats ? { pool: poolStats } : {}),
     },
     storage: {
       configured: Boolean(storage.configured),
@@ -877,6 +901,12 @@ function sanitizeDependencyStatusForResponse(dependencies) {
       configured: Boolean(redis.configured),
       status: String(redis.status || 'unknown'),
       latencyMs: Number(redis.latencyMs || 0),
+    },
+    llm: {
+      configured: Boolean(llm.configured),
+      status: String(llm.status || 'not_configured'),
+      latencyMs: Number(llm.latencyMs || 0),
+      provider: llm.provider || config.llmProvider || 'none',
     },
   };
 }
@@ -2400,6 +2430,7 @@ function registerCoreRoutes() {
 
   registerAuthRoutes(routerContext);
   registerSystemRoutes(routerContext);
+  registerAdminRoutes(routerContext);
   registerCrudRoutes(routerContext);
 }
 
@@ -2499,7 +2530,10 @@ async function handleRequest(context, response) {
       {
         retryAfterSeconds: Math.max(1, Math.ceil((rateState.resetAt - Date.now()) / 1000)),
       },
-      baseExtraHeaders
+      {
+        ...baseExtraHeaders,
+        'Retry-After': String(Math.max(1, Math.ceil((rateState.resetAt - Date.now()) / 1000))),
+      }
     );
     return;
   }
@@ -2668,6 +2702,9 @@ function createServer() {
 }
 
 async function startServer() {
+  // P0-1: Block startup if critical production config is missing
+  enforceProductionStartupGuard(config);
+
   const server = createServer();
   const validation = validateRuntimeConfig(config);
 

@@ -1,7 +1,11 @@
 /**
  * OpenTelemetry distributed tracing integration.
  * Uses @opentelemetry/api which is a no-op by default if no SDK is registered.
- * To enable, install @opentelemetry/sdk-node and configure before requiring this module.
+ *
+ * P3-1: When OTEL_ENABLED=true, this module will attempt to initialize the
+ * OpenTelemetry Node SDK with an OTLP/HTTP trace exporter. Install optional
+ * dependencies to activate:
+ *   npm install @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-http @opentelemetry/auto-instrumentations-node
  */
 
 let api;
@@ -12,7 +16,52 @@ try {
   api = null;
 }
 
-const SERVICE_NAME = 'cybertron-backend';
+const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || 'cybertron-backend';
+
+// P3-1: Auto-initialize SDK when OTEL_ENABLED=true
+let _sdkInitialized = false;
+if (api && process.env.OTEL_ENABLED === 'true') {
+  try {
+    const { NodeSDK } = require('@opentelemetry/sdk-node');
+    const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+    const { Resource } = require('@opentelemetry/resources');
+
+    // Optional: auto-instrumentations (HTTP, Express, pg, etc.)
+    let instrumentations = [];
+    try {
+      const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+      instrumentations = getNodeAutoInstrumentations({
+        '@opentelemetry/instrumentation-fs': { enabled: false },
+      });
+    } catch {
+      // Auto-instrumentations not installed — proceed with manual spans only
+    }
+
+    const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
+
+    const sdk = new NodeSDK({
+      resource: new Resource({ 'service.name': SERVICE_NAME }),
+      traceExporter: new OTLPTraceExporter({
+        url: `${otlpEndpoint}/v1/traces`,
+      }),
+      instrumentations,
+    });
+
+    sdk.start();
+    _sdkInitialized = true;
+
+    process.on('SIGTERM', () => {
+      sdk.shutdown().catch(() => {});
+    });
+
+    // eslint-disable-next-line no-console
+    console.log(`[tracing] OpenTelemetry SDK initialized (endpoint: ${otlpEndpoint})`);
+  } catch (err) {
+    // SDK packages not installed — tracing remains no-op
+    // eslint-disable-next-line no-console
+    console.warn('[tracing] OTEL_ENABLED=true but SDK packages not installed:', err.message);
+  }
+}
 
 function getTracer() {
   if (!api) return null;
@@ -103,5 +152,6 @@ module.exports = {
   startSpan,
   getActiveTraceId,
   injectTraceHeaders,
+  isOtelEnabled: _sdkInitialized,
   SERVICE_NAME,
 };

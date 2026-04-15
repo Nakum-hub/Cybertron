@@ -2711,3 +2711,136 @@ export async function updatePolicyApprovalStatus(
     { auth: true, query: { tenant } }
   );
 }
+
+// ─── Billing / Stripe ───────────────────────────────────────────────
+
+export async function createBillingCheckout(payload: {
+  tenant: string;
+  planKey: 'pro' | 'enterprise';
+  billingCycle: 'monthly' | 'annual';
+  returnTo?: string;
+}): Promise<{ sessionUrl: string }> {
+  const result = await api.post('/v1/billing/checkout', {
+    plan: payload.planKey,
+    billingCycle: payload.billingCycle,
+    successUrl: `${window.location.origin}/billing/success`,
+    cancelUrl: `${window.location.origin}/billing/cancel`,
+  }, { auth: true, query: { tenant: payload.tenant } });
+  return { sessionUrl: result.url || '' };
+}
+
+export async function fetchBillingStatus(tenant: string): Promise<{
+  plan: string;
+  status: string;
+  currentPeriodEnd: string | null;
+}> {
+  return api.get('/v1/billing/status', { auth: true, query: { tenant } });
+}
+
+// ─── Workspace Invites ──────────────────────────────────────────────
+
+export interface InviteRecord {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  createdAt: string;
+}
+
+export async function createWorkspaceInvite(
+  tenant: string,
+  payload: { email: string; role: string }
+): Promise<{ inviteId: string; expiresAt: string }> {
+  return api.post('/v1/admin/invites', payload, { auth: true, query: { tenant } });
+}
+
+export async function listWorkspaceInvites(tenant: string): Promise<{ data: InviteRecord[] }> {
+  return api.get('/v1/admin/invites', { auth: true, query: { tenant } });
+}
+
+export async function revokeWorkspaceInvite(tenant: string, inviteId: string): Promise<void> {
+  return api.delete(`/v1/admin/invites/${encodeURIComponent(inviteId)}`, { auth: true, query: { tenant } });
+}
+
+// ─── Connector Configuration ────────────────────────────────────────
+
+export interface ConnectorConfig {
+  id: string;
+  connector: string;
+  apiUrl: string;
+  enabled: boolean;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+}
+
+export async function listConnectorConfigs(tenant: string): Promise<{ data: ConnectorConfig[] }> {
+  return api.get('/v1/admin/connectors', { auth: true, query: { tenant } });
+}
+
+export async function upsertConnectorConfig(
+  tenant: string,
+  connector: string,
+  payload: { apiUrl: string; apiToken?: string; enabled: boolean }
+): Promise<ConnectorConfig> {
+  return api.put(`/v1/admin/connectors/${encodeURIComponent(connector)}`, payload, {
+    auth: true,
+    query: { tenant },
+  });
+}
+
+export async function testConnectorConnection(
+  tenant: string,
+  connector: string
+): Promise<{ success: boolean; message: string; latencyMs?: number }> {
+  return api.post(`/v1/admin/connectors/${encodeURIComponent(connector)}/test`, {}, {
+    auth: true,
+    query: { tenant },
+  });
+}
+
+// ─── API Key Management ─────────────────────────────────────────────
+
+export interface ApiKeyRecord {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  scopes: string[];
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export async function listApiKeys(tenant: string): Promise<{ data: ApiKeyRecord[] }> {
+  return api.get('/v1/admin/api-keys', { auth: true, query: { tenant } });
+}
+
+export async function createApiKey(
+  tenant: string,
+  payload: { name: string; scopes?: string[]; expiresIn?: string }
+): Promise<{ id: string; rawKey: string; keyPrefix: string }> {
+  return api.post('/v1/admin/api-keys', payload, { auth: true, query: { tenant } });
+}
+
+export async function revokeApiKey(tenant: string, keyId: string): Promise<void> {
+  return api.delete(`/v1/admin/api-keys/${encodeURIComponent(keyId)}`, { auth: true, query: { tenant } });
+}
+
+// ─── Notification Preferences ───────────────────────────────────────
+
+export interface NotificationPreferences {
+  emailOnCritical: boolean;
+  emailOnHigh: boolean;
+  emailOnResolved: boolean;
+  inAppAll: boolean;
+}
+
+export async function fetchNotificationPreferences(): Promise<NotificationPreferences> {
+  return api.get('/v1/notifications/preferences', { auth: true });
+}
+
+export async function updateNotificationPreferences(
+  prefs: Partial<NotificationPreferences>
+): Promise<NotificationPreferences> {
+  return api.patch('/v1/notifications/preferences', prefs, { auth: true });
+}

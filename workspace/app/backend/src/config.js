@@ -63,6 +63,7 @@ function normalizeLlmProvider(value) {
   const normalized = String(value || 'none').toLowerCase().trim();
   if (normalized === 'openai') return 'openai';
   if (normalized === 'ollama') return 'ollama';
+  if (normalized === 'vllm') return 'vllm';
   return 'none';
 }
 
@@ -288,6 +289,12 @@ const config = {
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
   ollamaUrl: process.env.OLLAMA_URL || '',
   ollamaModel: process.env.OLLAMA_MODEL || 'llama3.1',
+
+  // vLLM (OpenAI-compatible self-hosted endpoint for fine-tuned Cybertron LoRA model)
+  vllmBaseUrl: process.env.LLM_VLLM_BASE_URL || 'http://localhost:8000/v1',
+  vllmModel: process.env.LLM_VLLM_MODEL || 'cybertron',
+  vllmApiKey: process.env.LLM_VLLM_API_KEY || 'cybertron-local-key',
+
   llmRequestTimeoutMs: toNumber(process.env.LLM_REQUEST_TIMEOUT_MS, 120_000),
   llmDefaultMaxTokens: toNumber(process.env.LLM_DEFAULT_MAX_TOKENS, 1024),
   llmRateLimitWindowMs: toNumber(process.env.LLM_RATE_LIMIT_WINDOW_MS, 3_600_000),
@@ -342,6 +349,31 @@ const config = {
   otelEnabled: toBoolean(process.env.OTEL_ENABLED, false),
   otelServiceName: process.env.OTEL_SERVICE_NAME || 'cybertron-backend',
   otelExporterEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '',
+
+  // Email provider settings (P1-1)
+  emailProvider: String(process.env.EMAIL_PROVIDER || 'console').toLowerCase().trim(),
+  emailFromAddress: process.env.EMAIL_FROM_ADDRESS || 'noreply@cybertron.io',
+  emailFromName: process.env.EMAIL_FROM_NAME || 'Cybertron',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  smtpHost: process.env.SMTP_HOST || '',
+  smtpPort: toNumber(process.env.SMTP_PORT, 587),
+  smtpUser: process.env.SMTP_USER || '',
+  smtpPass: process.env.SMTP_PASS || '',
+  smtpSecure: toBoolean(process.env.SMTP_SECURE, false),
+
+  // Stripe billing integration (P1-4)
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  stripePriceIdProMonthly: process.env.STRIPE_PRICE_ID_PRO_MONTHLY || '',
+  stripePriceIdProAnnual: process.env.STRIPE_PRICE_ID_PRO_ANNUAL || '',
+  stripePriceIdEnterpriseMonthly: process.env.STRIPE_PRICE_ID_ENTERPRISE_MONTHLY || '',
+
+  // Connector secrets encryption key (P1-10)
+  connectorSecretsKey: process.env.CONNECTOR_SECRETS_KEY || '',
+
+  // Fine-tuned model via vLLM (P2-5)
+  llmVllmBaseUrl: process.env.LLM_VLLM_BASE_URL || 'http://vllm:8000/v1',
+  llmVllmModel: process.env.LLM_VLLM_MODEL || 'cybertron-lora',
 };
 
 function validateRuntimeConfig(activeConfig) {
@@ -661,6 +693,10 @@ function validateRuntimeConfig(activeConfig) {
     warnings.push('LLM_PROVIDER=ollama but OLLAMA_URL is not set. LLM endpoints will fail with LLM_NOT_CONFIGURED.');
   }
 
+  if (activeConfig.llmProvider === 'vllm' && !activeConfig.vllmBaseUrl) {
+    warnings.push('LLM_PROVIDER=vllm but LLM_VLLM_BASE_URL is not set. LLM endpoints will fail with LLM_NOT_CONFIGURED.');
+  }
+
   if (activeConfig.environment === 'production' && !isHttpsUrl(activeConfig.nvdFeedUrl)) {
     errors.push('NVD_FEED_URL must use https in production.');
   }
@@ -688,7 +724,58 @@ function validateRuntimeConfig(activeConfig) {
   };
 }
 
+/**
+ * P0-1: Production startup guard.
+ * Must be called before the server starts listening.
+ * Throws if critical configuration is missing in production.
+ */
+function enforceProductionStartupGuard(activeConfig) {
+  if (activeConfig.environment !== 'production') {
+    return; // Only enforce in production
+  }
+
+  const missing = [];
+
+  if (!activeConfig.jwtSecret || activeConfig.jwtSecret.length < 32) {
+    missing.push('JWT_SECRET (must be at least 32 characters)');
+  }
+
+  if (!activeConfig.databaseUrl) {
+    missing.push('DATABASE_URL');
+  }
+
+  if (activeConfig.authMode === 'demo') {
+    missing.push('AUTH_MODE cannot be "demo" in production');
+  }
+
+  if (activeConfig.allowInsecureDemoAuth) {
+    missing.push('ALLOW_INSECURE_DEMO_AUTH must be false in production');
+  }
+
+  if (missing.length > 0) {
+    const message = [
+      '',
+      '╔══════════════════════════════════════════════════════════════╗',
+      '║  CYBERTRON — PRODUCTION STARTUP BLOCKED                    ║',
+      '╚══════════════════════════════════════════════════════════════╝',
+      '',
+      'The following required configuration is missing or invalid:',
+      '',
+      ...missing.map(m => `  ✗ ${m}`),
+      '',
+      'Set these variables in your .env or environment before starting.',
+      'Generate secrets with:',
+      '  node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"',
+      '',
+    ].join('\n');
+
+    console.error(message);
+    throw new Error(`Production startup blocked: ${missing.length} critical config issue(s).`);
+  }
+}
+
 module.exports = {
   config,
   validateRuntimeConfig,
+  enforceProductionStartupGuard,
 };

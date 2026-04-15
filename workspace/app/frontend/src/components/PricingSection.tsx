@@ -116,17 +116,51 @@ const ANNUAL_PRICES: Record<string, { monthly: string; annual: string; saved: st
   Enterprise: { monthly: 'Custom', annual: 'Custom', saved: '' },
 };
 
-function navigateToPlanAction(action: PlanAction): void {
+function navigateToPlanAction(action: PlanAction, billingCycle: 'monthly' | 'annual' = 'monthly'): void {
   if (typeof window === 'undefined') {
     return;
   }
 
-  if (action.type === 'register') {
+  if (action.type === 'external') {
+    window.location.assign(action.href);
+    return;
+  }
+
+  // P2-6: Check if user is authenticated via cookie presence
+  const hasSession = document.cookie.split(';').some(c => c.trim().startsWith('ct_access='));
+
+  if (!hasSession || action.plan === 'starter') {
+    // Not authenticated or free plan — send to register
     window.location.assign(`/account?mode=register&plan=${encodeURIComponent(action.plan)}`);
     return;
   }
 
-  window.location.assign(action.href);
+  // Authenticated user wanting pro/enterprise — redirect to Stripe checkout
+  // The checkout endpoint will create the Stripe session and return a URL
+  const tenant = new URLSearchParams(window.location.search).get('tenant') || '';
+  fetch(`/api/v1/billing/checkout?tenant=${encodeURIComponent(tenant)}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      plan: action.plan,
+      billingCycle,
+      successUrl: `${window.location.origin}/billing/success`,
+      cancelUrl: `${window.location.origin}/billing/cancel`,
+    }),
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.url) {
+        window.location.assign(data.url);
+      } else {
+        // Fallback: go to register with plan param
+        window.location.assign(`/account?mode=register&plan=${encodeURIComponent(action.plan)}`);
+      }
+    })
+    .catch(() => {
+      window.location.assign(`/account?mode=register&plan=${encodeURIComponent(action.plan)}`);
+    });
 }
 
 export default function PricingSection() {
@@ -252,7 +286,7 @@ export default function PricingSection() {
                     : 'magnetic-btn !bg-white/5 !hover:bg-white/10 text-white border border-white/10 hover:-translate-y-0.5'
                     }`}
                   onClick={() => {
-                    navigateToPlanAction(plan.action);
+                    navigateToPlanAction(plan.action, billingCycle);
                   }}
                 >
                   {plan.cta}
