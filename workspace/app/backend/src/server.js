@@ -232,6 +232,8 @@ const { registerRoutes: registerAuthRoutes } = require('./routes/auth');
 const { registerRoutes: registerSystemRoutes } = require('./routes/system');
 const { registerRoutes: registerCrudRoutes } = require('./routes/crud');
 const { registerRoutes: registerAdminRoutes } = require('./routes/admin');
+const { registerRoutes: registerNotificationRoutes } = require('./routes/notifications');
+const { registerRoutes: registerPlatformRoutes } = require('./routes/platform');
 const { extractContext, startRequestSpan, endRequestSpan } = require('./tracing');
 
 const sessionStore = createSessionStore({
@@ -2431,6 +2433,8 @@ function registerCoreRoutes() {
   registerAuthRoutes(routerContext);
   registerSystemRoutes(routerContext);
   registerAdminRoutes(routerContext);
+  registerNotificationRoutes(routerContext);
+  registerPlatformRoutes(routerContext);
   registerCrudRoutes(routerContext);
 }
 

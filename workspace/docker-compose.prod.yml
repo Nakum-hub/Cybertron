@@ -2,9 +2,9 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:?set_REDIS_PASSWORD}
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     healthcheck:
-      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}', 'ping']
       interval: 10s
       timeout: 5s
       retries: 8
@@ -85,7 +85,7 @@ services:
       AUTH_MODE: ${AUTH_MODE:-jwt_hs256}
       JWT_SECRET: ${JWT_SECRET:?set_JWT_SECRET}
       REDIS_URL: ${REDIS_URL:?set_REDIS_URL}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?set_REDIS_PASSWORD}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
       REDIS_CONNECT_TIMEOUT_MS: ${REDIS_CONNECT_TIMEOUT_MS:-2000}
       REDIS_CONNECT_MAX_RETRIES: ${REDIS_CONNECT_MAX_RETRIES:-4}
       JWT_ISSUER: ${JWT_ISSUER:-}

@@ -137,6 +137,7 @@ export default function Platform() {
     backendHealth.data?.status !== 'ok';
   const operationsPath = getInternalOperationsPath(profile?.role || role);
   const operationsLabel = operationsPath === '/diagnostics' ? 'diagnostics' : 'status';
+  const hasTenantAdminAccess = hasRoleAccess(normalizeRole(profile?.role || role), 'tenant_admin');
   const billingInfo = billingCreditsQuery.data;
   const billingQuotaEnforced = billingInfo?.quotaEnforced === true;
   const billingQuotaExhausted = billingInfo?.exhausted === true;
@@ -283,6 +284,44 @@ export default function Platform() {
               <p className="text-sm text-slate-300">
                 Tenant-aware security operations workspace for global teams.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  to="/account"
+                  className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                >
+                  Account Center
+                </Link>
+                <Link
+                  to="/account/api-keys"
+                  className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                >
+                  API Keys
+                </Link>
+                {hasTenantAdminAccess && (
+                  <Link
+                    to="/account/team"
+                    className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                  >
+                    Team
+                  </Link>
+                )}
+                {hasTenantAdminAccess && (
+                  <Link
+                    to="/platform/connectors"
+                    className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                  >
+                    Connectors
+                  </Link>
+                )}
+                {hasTenantAdminAccess && (
+                  <Link
+                    to="/admin"
+                    className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-medium text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-400/15"
+                  >
+                    Admin
+                  </Link>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:min-w-[440px]">

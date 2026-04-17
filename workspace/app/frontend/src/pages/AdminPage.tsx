@@ -3,19 +3,21 @@
  * Route: /admin
  * Shows tenant-level admin tools: users, billing, invites, settings.
  */
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowLeft,
-  Users,
-  CreditCard,
-  Shield,
-  Settings,
-  UserPlus,
   Activity,
+  AlertCircle,
+  ArrowLeft,
+  CreditCard,
   Loader2,
+  Settings,
+  Shield,
+  UserPlus,
+  Users,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { useAuthStatus } from '@/hooks/use-auth-status';
+import { api, ApiError } from '@/lib/api';
 
 interface AdminUser {
   email: string;
@@ -35,28 +37,73 @@ interface AdminInvite {
 
 type AdminTab = 'users' | 'invites' | 'billing' | 'settings';
 
+function getAdminErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) {
+      return 'Your session expired. Sign in again to access admin tools.';
+    }
+
+    if (error.status === 403) {
+      return 'You do not have permission to access admin tools for this workspace.';
+    }
+
+    return error.message || 'Failed to load admin data.';
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return 'Failed to load admin data.';
+}
+
 export default function AdminPage() {
+  const { status, profile } = useAuthStatus();
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [invites, setInvites] = useState<AdminInvite[]>([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const resolvedTenant = String(profile?.tenant || 'global').trim() || 'global';
 
   useEffect(() => {
-    loadData();
-  }, [activeTab]);
+    if (status === 'loading') {
+      return;
+    }
+    void loadData();
+  }, [activeTab, resolvedTenant, status]);
 
   async function loadData() {
     setLoading(true);
+    setError('');
+
     try {
       if (activeTab === 'users') {
-        const result = await api.get<{ data: AdminUser[] }>('/v1/admin/users', { auth: true });
+        const result = await api.get<{ data: AdminUser[] }>('/v1/admin/users', {
+          auth: true,
+          query: { tenant: resolvedTenant },
+        });
         setUsers(result.data || []);
-      } else if (activeTab === 'invites') {
-        const result = await api.get<AdminInvite[]>('/v1/admin/invites', { auth: true });
+        return;
+      }
+
+      if (activeTab === 'invites') {
+        const result = await api.get<AdminInvite[]>('/v1/admin/invites', {
+          auth: true,
+          query: { tenant: resolvedTenant },
+        });
         setInvites(result || []);
       }
-    } catch {
-      // Silently handle — user may not have admin access
+    } catch (err: unknown) {
+      if (activeTab === 'users') {
+        setUsers([]);
+      }
+
+      if (activeTab === 'invites') {
+        setInvites([]);
+      }
+
+      setError(getAdminErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -90,7 +137,6 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Tab Bar */}
         <div className="flex gap-1 mb-8 p-1 rounded-xl bg-white/[0.03] border border-white/5 w-fit">
           {tabs.map((tab) => (
             <button
@@ -108,7 +154,13 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Content */}
+        {error && (
+          <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 mb-6 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <span className="text-sm text-red-300">{error}</span>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
@@ -137,8 +189,8 @@ export default function AdminPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {users.map((u, i) => (
-                          <tr key={i} className="border-t border-white/5 hover:bg-white/[0.02] transition-colors">
+                        {users.map((u, index) => (
+                          <tr key={index} className="border-t border-white/5 hover:bg-white/[0.02] transition-colors">
                             <td className="px-4 py-3">
                               <p className="text-white font-medium">{u.displayName || u.email}</p>
                               <p className="text-xs text-slate-500">{u.email}</p>
@@ -150,7 +202,7 @@ export default function AdminPage() {
                             </td>
                             <td className="px-4 py-3">
                               <span className={`text-xs ${u.active ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {u.active ? '● Active' : '● Inactive'}
+                                {u.active ? 'Active' : 'Inactive'}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-xs text-slate-500">
@@ -184,14 +236,16 @@ export default function AdminPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {invites.map((inv) => (
-                      <div key={inv.id} className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02]">
+                    {invites.map((invite) => (
+                      <div key={invite.id} className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02]">
                         <div>
-                          <p className="text-white font-medium">{inv.email}</p>
-                          <p className="text-xs text-slate-500">Role: {inv.role} · Expires: {new Date(inv.expiresAt).toLocaleDateString()}</p>
+                          <p className="text-white font-medium">{invite.email}</p>
+                          <p className="text-xs text-slate-500">
+                            Role: {invite.role} | Expires: {new Date(invite.expiresAt).toLocaleDateString()}
+                          </p>
                         </div>
-                        <span className={`text-xs px-2 py-0.5 rounded ${inv.acceptedAt ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
-                          {inv.acceptedAt ? 'Accepted' : 'Pending'}
+                        <span className={`text-xs px-2 py-0.5 rounded ${invite.acceptedAt ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                          {invite.acceptedAt ? 'Accepted' : 'Pending'}
                         </span>
                       </div>
                     ))}
@@ -247,7 +301,7 @@ export default function AdminPage() {
                         to="/platform/connectors"
                         className="px-3 py-1.5 rounded-lg bg-white/5 text-xs text-cyan-300 hover:bg-white/10 transition-colors border border-white/10"
                       >
-                        Configure →
+                        Configure {'->'}
                       </Link>
                     </div>
                   </div>

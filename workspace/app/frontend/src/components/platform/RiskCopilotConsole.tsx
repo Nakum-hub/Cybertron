@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { AlertTriangle, FileSpreadsheet, Radar, Shield } from 'lucide-react';
 import { pushToast } from '@/components/ui/toaster';
@@ -8,12 +9,21 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof ApiError ? error.message : fallback;
 }
 
+type AiAvailabilityState =
+  | {
+      kind: 'provider_missing' | 'feature_disabled';
+      title: string;
+      description: string;
+    }
+  | null;
+
 export default function RiskCopilotConsole({
   tenant,
 }: {
   tenant: string;
   role: string;
 }) {
+  const [aiAvailability, setAiAvailability] = useState<AiAvailabilityState>(null);
   const findingsQuery = useQuery({
     queryKey: ['risk-console-findings', tenant],
     queryFn: () => fetchRiskFindings(tenant, { limit: 8 }),
@@ -23,12 +33,28 @@ export default function RiskCopilotConsole({
   const reportMutation = useMutation({
     mutationFn: () => generateRiskReport(tenant),
     onSuccess: result => {
+      if (result.aiExplanation.aiGenerated === false || result.aiExplanation.provider === 'local') {
+        setAiAvailability({
+          kind: 'provider_missing',
+          title: 'AI provider not configured',
+          description: 'Risk Copilot generated a rule-based report because no LLM provider is configured for this environment.',
+        });
+      } else {
+        setAiAvailability(null);
+      }
       pushToast({
         title: 'Risk report generated',
         description: `Report ${result.report.id} was created for ${tenant}.`,
       });
     },
     onError: error => {
+      if (error instanceof ApiError && error.code === 'feature_disabled') {
+        setAiAvailability({
+          kind: 'feature_disabled',
+          title: 'AI analysis disabled',
+          description: 'Enable llm_features_enabled for this tenant before generating AI risk reports.',
+        });
+      }
       pushToast({
         title: 'Risk report generation failed',
         description: errorMessage(error, 'Unable to generate a risk report right now.'),
@@ -72,12 +98,19 @@ export default function RiskCopilotConsole({
           <button
             type="button"
             onClick={() => reportMutation.mutate()}
-            disabled={reportMutation.isPending}
+            disabled={reportMutation.isPending || aiAvailability?.kind === 'feature_disabled'}
             className="rounded-lg border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {reportMutation.isPending ? 'Generating...' : 'Generate Risk Report'}
           </button>
         </div>
+
+        {aiAvailability && (
+          <div className="mb-4 rounded-lg border border-amber-400/20 bg-amber-400/10 p-4">
+            <p className="text-sm font-medium text-white">{aiAvailability.title}</p>
+            <p className="mt-1 text-xs text-slate-300">{aiAvailability.description}</p>
+          </div>
+        )}
 
         {findingsQuery.isError ? (
           <p className="text-sm text-amber-200">
@@ -93,7 +126,7 @@ export default function RiskCopilotConsole({
                       {String(finding.details?.title || finding.assetId || finding.id)}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      {finding.category} · asset {finding.assetId || 'unknown'} · treatment {finding.treatmentStatus}
+                      {finding.category} | asset {finding.assetId || 'unknown'} | treatment {finding.treatmentStatus}
                     </p>
                   </div>
                   <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2 py-1 text-[11px] font-medium text-cyan-100">

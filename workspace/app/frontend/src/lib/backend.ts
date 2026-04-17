@@ -2720,7 +2720,7 @@ export async function createBillingCheckout(payload: {
   billingCycle: 'monthly' | 'annual';
   returnTo?: string;
 }): Promise<{ sessionUrl: string }> {
-  const result = await api.post('/v1/billing/checkout', {
+  const result = await api.post<{ url?: string }>('/v1/billing/checkout', {
     plan: payload.planKey,
     billingCycle: payload.billingCycle,
     successUrl: `${window.location.origin}/billing/success`,
@@ -2755,7 +2755,7 @@ export async function createWorkspaceInvite(
   return api.post('/v1/admin/invites', payload, { auth: true, query: { tenant } });
 }
 
-export async function listWorkspaceInvites(tenant: string): Promise<{ data: InviteRecord[] }> {
+export async function listWorkspaceInvites(tenant: string): Promise<InviteRecord[]> {
   return api.get('/v1/admin/invites', { auth: true, query: { tenant } });
 }
 
@@ -2769,12 +2769,21 @@ export interface ConnectorConfig {
   id: string;
   connector: string;
   apiUrl: string;
+  apiTokenMasked?: string;
   enabled: boolean;
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
 }
 
-export async function listConnectorConfigs(tenant: string): Promise<{ data: ConnectorConfig[] }> {
+export interface ConnectorTestResult {
+  connector: string;
+  reachable: boolean;
+  statusCode: number | null;
+  latencyMs: number;
+  error?: string;
+}
+
+export async function listConnectorConfigs(tenant: string): Promise<ConnectorConfig[]> {
   return api.get('/v1/admin/connectors', { auth: true, query: { tenant } });
 }
 
@@ -2792,7 +2801,7 @@ export async function upsertConnectorConfig(
 export async function testConnectorConnection(
   tenant: string,
   connector: string
-): Promise<{ success: boolean; message: string; latencyMs?: number }> {
+): Promise<ConnectorTestResult> {
   return api.post(`/v1/admin/connectors/${encodeURIComponent(connector)}/test`, {}, {
     auth: true,
     query: { tenant },

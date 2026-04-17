@@ -118,84 +118,7 @@ function registerRoutes(routerContext) {
         return null;
       }
     }
-
-    // ─── SSE Notifications Endpoint ──────────────────────────────────
-    if (context.path === '/v1/notifications/stream') {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-      if (!requireDatabaseConfigured(context, response, baseExtraHeaders)) return true;
-      const session = await requireSession(context, response, baseExtraHeaders, 'Notification stream requires authentication');
-      if (!session) return true;
-      const tenant = await resolveTenantForRequest(context, response, baseExtraHeaders, session, context.url.searchParams.get('tenant'), { allowCrossTenantRoles: ['super_admin'] });
-      if (!tenant) return true;
-
-      const added = addSseClient(tenant, session.user.id, response);
-      if (!added) {
-        sendError(response, context, config, 429, 'too_many_connections', 'Max SSE connections per tenant reached', null, baseExtraHeaders);
-        return true;
-      }
-
-      response.writeHead(200, {
-        ...baseHeaders(context, config, baseExtraHeaders),
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
-
-      // Send any missed events since the last event ID
-      const lastEventId = Number(context.request.headers['last-event-id'] || '0') || 0;
-      const missed = getRecentEventsForTenant(tenant, lastEventId);
-      for (const evt of missed) {
-        const data = JSON.stringify({ type: evt.type, payload: evt.payload, timestamp: evt.timestamp });
-        response.write(`id: ${evt.id}\nevent: ${evt.type}\ndata: ${data}\n\n`);
-      }
-
-      response.write(`: connected to ${tenant} notification stream\n\n`);
-
-      // SSE heartbeat to prevent idle timeout and detect dead connections
-      const SSE_HEARTBEAT_INTERVAL_MS = 30_000;
-      const SSE_MAX_IDLE_MS = 10 * 60 * 1000; // 10 minutes
-      const sseStartTime = Date.now();
-      const heartbeatTimer = setInterval(() => {
-        if (Date.now() - sseStartTime > SSE_MAX_IDLE_MS) {
-          clearInterval(heartbeatTimer);
-          response.end();
-          return;
-        }
-        try {
-          response.write(`: heartbeat\n\n`);
-        } catch {
-          clearInterval(heartbeatTimer);
-        }
-      }, SSE_HEARTBEAT_INTERVAL_MS);
-      response.on('close', () => clearInterval(heartbeatTimer));
-
-      return true;
-    }
-
-    if (context.path === '/v1/notifications/stats') {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-      if (!requireDatabaseConfigured(context, response, baseExtraHeaders)) return true;
-      const session = await requireSession(context, response, baseExtraHeaders, 'Notification stats require authentication');
-      if (!session) return true;
-      const tenant = await resolveTenantForRequest(context, response, baseExtraHeaders, session, context.url.searchParams.get('tenant'), { allowCrossTenantRoles: ['super_admin'] });
-      if (!tenant) return true;
-
-      sendJson(response, context, config, 200, {
-        tenant,
-        connectedClients: getConnectedClientCount(tenant),
-        totalConnectedClients: getTotalConnectedClients(),
-      }, baseExtraHeaders);
-      return true;
-    }
-
-    // ─── Threats ─────────────────────────────────────────────────────
+    // Threats
     if (context.path === '/v1/threats/summary') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -319,7 +242,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── Incidents (parameterized routes first) ──────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Incidents (parameterized routes first) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (/^\/v1\/incidents\/[0-9]+\/timeline$/.test(context.path)) {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -623,7 +546,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── IOCs ────────────────────────────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ IOCs Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/iocs') {
       if (context.method !== 'GET' && context.method !== 'POST') {
         sendMethodNotAllowed(response, context, config, ['GET', 'POST'], baseExtraHeaders);
@@ -723,7 +646,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── Service Requests ────────────────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Service Requests Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (/^\/v1\/service-requests\/[0-9]+\/comments$/.test(context.path)) {
       if (context.method !== 'GET' && context.method !== 'POST') {
         sendMethodNotAllowed(response, context, config, ['GET', 'POST'], baseExtraHeaders);
@@ -984,7 +907,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── Reports ─────────────────────────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Reports Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/reports/upload') {
       if (context.method !== 'POST') {
         sendMethodNotAllowed(response, context, config, ['POST'], baseExtraHeaders);
@@ -1461,668 +1384,7 @@ function registerRoutes(routerContext) {
       }
       return true;
     }
-
-    // ─── Platform Apps ───────────────────────────────────────────────
-    if (context.path === '/v1/platform/apps') {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Platform endpoints require authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      const requestedRole = context.url.searchParams.get('role');
-      const effectiveRole = resolveRequestedRoleScope(
-        session,
-        requestedRole,
-        context,
-        response,
-        baseExtraHeaders
-      );
-      if (!effectiveRole) {
-        return true;
-      }
-      const tenant = await resolveTenantForRequest(
-        context,
-        response,
-        baseExtraHeaders,
-        session,
-        context.url.searchParams.get('tenant')
-      );
-      if (!tenant) {
-        return true;
-      }
-      const apps = await listPlatformAppsForRole(tenant, effectiveRole);
-      await meterUsage(context, session, tenant, 'threat-command', 'platform.apps.list', 1, {
-        appCount: apps.length,
-        effectiveRole,
-      });
-      sendJson(response, context, config, 200, apps, baseExtraHeaders);
-      return true;
-    }
-
-    if (/^\/v1\/apps\/[a-z0-9-]+\/status$/.test(context.path)) {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Platform endpoints require authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      const appId = context.path.replace('/v1/apps/', '').replace('/status', '').toLowerCase();
-      const requestedRole = context.url.searchParams.get('role');
-      const effectiveRole = resolveRequestedRoleScope(
-        session,
-        requestedRole,
-        context,
-        response,
-        baseExtraHeaders
-      );
-      if (!effectiveRole) {
-        return true;
-      }
-      const tenant = await resolveTenantForRequest(
-        context,
-        response,
-        baseExtraHeaders,
-        session,
-        context.url.searchParams.get('tenant')
-      );
-      if (!tenant) {
-        return true;
-      }
-      const app = await resolveAccessibleAppForContext(appId, tenant, effectiveRole);
-
-      if (!app) {
-        sendError(
-          response,
-          context,
-          config,
-          403,
-          'module_not_accessible',
-          'Module is disabled, feature-gated, or not accessible for current role/tenant scope.',
-          null,
-          baseExtraHeaders
-        );
-        return true;
-      }
-
-      if (!hasRoleAccess(effectiveRole, app.requiredRole)) {
-        sendError(
-          response,
-          context,
-          config,
-          403,
-          'access_denied',
-          'Role does not have access to this module',
-          {
-            requiredRole: app.requiredRole,
-            effectiveRole,
-            appId: app.id,
-          },
-          baseExtraHeaders
-        );
-        return true;
-      }
-
-      const gatedProduct = await requireCrudProductGate(
-        session,
-        tenant,
-        app.id,
-        app.requiredRole
-      );
-      if (!gatedProduct) {
-        return true;
-      }
-
-      const payload = await buildAppStatus(app.id, tenant);
-      await meterUsage(context, session, tenant, app.id, 'platform.app.status', 1, {
-        effectiveRole,
-      });
-      sendJson(response, context, config, 200, payload, baseExtraHeaders);
-      return true;
-    }
-
-    // ─── Tenants / Products / Feature Flags ──────────────────────────
-    if (/^\/v1\/modules\/[a-z0-9-]+\/status$/.test(context.path)) {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Module endpoints require authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      const moduleId = context.path.replace('/v1/modules/', '').replace('/status', '').toLowerCase();
-      const effectiveRole = resolveRequestedRoleScope(
-        session,
-        context.url.searchParams.get('role'),
-        context,
-        response,
-        baseExtraHeaders
-      );
-      if (!effectiveRole) {
-        return true;
-      }
-
-      const tenant = await resolveTenantForRequest(
-        context,
-        response,
-        baseExtraHeaders,
-        session,
-        context.url.searchParams.get('tenant')
-      );
-      if (!tenant) {
-        return true;
-      }
-
-      const registeredModule = listRegisteredModules().find(
-        mod => String(mod?.moduleId || '').toLowerCase() === moduleId
-      );
-      if (!registeredModule) {
-        sendError(
-          response,
-          context,
-          config,
-          404,
-          'module_not_found',
-          'Module is not registered.',
-          { moduleId },
-          baseExtraHeaders
-        );
-        return true;
-      }
-
-      const accessibleApps = await listPlatformAppsForRole(tenant, effectiveRole);
-      const app = accessibleApps.find(
-        candidate => String(candidate?.moduleId || '').toLowerCase() === moduleId
-      );
-
-      if (!app) {
-        sendError(
-          response,
-          context,
-          config,
-          403,
-          'module_not_accessible',
-          'Module is disabled, feature-gated, or not accessible for current role/tenant scope.',
-          { moduleId },
-          baseExtraHeaders
-        );
-        return true;
-      }
-
-      if (!hasRoleAccess(effectiveRole, app.requiredRole)) {
-        sendError(
-          response,
-          context,
-          config,
-          403,
-          'access_denied',
-          'Role does not have access to this module',
-          {
-            requiredRole: app.requiredRole,
-            effectiveRole,
-            appId: app.id,
-            moduleId,
-          },
-          baseExtraHeaders
-        );
-        return true;
-      }
-
-      const gatedProduct = await requireCrudProductGate(
-        session,
-        tenant,
-        app.id,
-        app.requiredRole
-      );
-      if (!gatedProduct) {
-        return true;
-      }
-
-      const payload = await buildAppStatus(app.id, tenant);
-      await meterUsage(context, session, tenant, app.id, 'platform.module.status', 1, {
-        effectiveRole,
-        moduleId,
-      });
-      sendJson(response, context, config, 200, payload, baseExtraHeaders);
-      return true;
-    }
-
-    if (context.path === '/v1/tenants') {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Tenant catalog requires authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      const role = normalizeRole(session.user.role);
-      const tenantSlug = sanitizeTenant(session.user.tenant || 'global');
-      if (!config.databaseUrl || !hasRoleAccess(role, 'super_admin')) {
-        sendJson(
-          response,
-          context,
-          config,
-          200,
-          [
-            {
-              slug: tenantSlug,
-              name: tenantSlug === 'global' ? 'Global Tenant' : `Tenant ${tenantSlug}`,
-              createdAt: new Date().toISOString(),
-            },
-          ],
-          baseExtraHeaders
-        );
-        return true;
-      }
-
-      const limit = toSafeInteger(context.url.searchParams.get('limit'), 25, 1, 200);
-      const payload = await listTenants(config, limit);
-      sendJson(response, context, config, 200, payload, baseExtraHeaders);
-      return true;
-    }
-
-    if (/^\/v1\/tenants\/[a-z0-9-]+\/products$/.test(context.path)) {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      if (!requireDatabaseConfigured(context, response, baseExtraHeaders)) {
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Tenant product registry requires authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      const tenantSlug = sanitizeTenant(context.path.split('/')[3] || 'global');
-      if (
-        !authGuard.requireTenantScope(session, tenantSlug, context, response, baseExtraHeaders, {
-          allowCrossTenantRoles: ['super_admin'],
-        })
-      ) {
-        return true;
-      }
-
-      const requestedRole = context.url.searchParams.get('role');
-      const effectiveRole = resolveRequestedRoleScope(
-        session,
-        requestedRole,
-        context,
-        response,
-        baseExtraHeaders
-      );
-      if (!effectiveRole) {
-        return true;
-      }
-      const payload = await listTenantProducts(config, tenantSlug, effectiveRole);
-      sendJson(response, context, config, 200, payload, baseExtraHeaders);
-      return true;
-    }
-
-    if (/^\/v1\/tenants\/[a-z0-9-]+\/products\/[a-z0-9-]+$/.test(context.path)) {
-      if (context.method !== 'PATCH') {
-        sendMethodNotAllowed(response, context, config, ['PATCH'], baseExtraHeaders);
-        return true;
-      }
-
-      if (!requireDatabaseConfigured(context, response, baseExtraHeaders)) {
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Tenant product updates require authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      if (!requireRole(session, 'tenant_admin', response, context, baseExtraHeaders)) {
-        return true;
-      }
-
-      const tenantSlug = sanitizeTenant(context.path.split('/')[3] || 'global');
-      if (
-        !authGuard.requireTenantScope(session, tenantSlug, context, response, baseExtraHeaders, {
-          allowCrossTenantRoles: ['super_admin'],
-        })
-      ) {
-        return true;
-      }
-
-      const payload = await parseJsonBody(context, response, baseExtraHeaders);
-      if (!payload) {
-        return true;
-      }
-
-      if (
-        !validateBodyShape(context, response, baseExtraHeaders, payload, {
-          required: ['enabled'],
-          optional: ['roleMin'],
-        })
-      ) {
-        return true;
-      }
-
-      const productKey = context.path.split('/')[5];
-      try {
-        const result = await setTenantProductState(
-          config,
-          {
-            productKey,
-            tenant: tenantSlug,
-            enabled: payload.enabled,
-            roleMin: payload.roleMin,
-          },
-          actorMetaFromContext(context, session)
-        );
-        sendJson(response, context, config, 200, result, baseExtraHeaders);
-      } catch (error) {
-        handleServiceFailure(error, response, context, baseExtraHeaders);
-      }
-      return true;
-    }
-
-    if (/^\/v1\/tenants\/[a-z0-9-]+\/feature-flags$/.test(context.path)) {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      if (!requireDatabaseConfigured(context, response, baseExtraHeaders)) {
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Feature flag catalog requires authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      const tenantSlug = sanitizeTenant(context.path.split('/')[3] || 'global');
-      if (
-        !authGuard.requireTenantScope(session, tenantSlug, context, response, baseExtraHeaders, {
-          allowCrossTenantRoles: ['super_admin'],
-        })
-      ) {
-        return true;
-      }
-
-      if (!requireRole(session, 'executive_viewer', response, context, baseExtraHeaders)) {
-        return true;
-      }
-
-      const payload = await listTenantFeatureFlags(config, tenantSlug);
-      sendJson(response, context, config, 200, payload, baseExtraHeaders);
-      return true;
-    }
-
-    if (/^\/v1\/tenants\/[a-z0-9-]+\/feature-flags\/[a-z0-9_:-]+$/.test(context.path)) {
-      if (context.method !== 'PATCH') {
-        sendMethodNotAllowed(response, context, config, ['PATCH'], baseExtraHeaders);
-        return true;
-      }
-
-      if (!requireDatabaseConfigured(context, response, baseExtraHeaders)) {
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Feature flag updates require authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      if (!requireRole(session, 'tenant_admin', response, context, baseExtraHeaders)) {
-        return true;
-      }
-
-      const tenantSlug = sanitizeTenant(context.path.split('/')[3] || 'global');
-      if (
-        !authGuard.requireTenantScope(session, tenantSlug, context, response, baseExtraHeaders, {
-          allowCrossTenantRoles: ['super_admin'],
-        })
-      ) {
-        return true;
-      }
-
-      const payload = await parseJsonBody(context, response, baseExtraHeaders);
-      if (!payload) {
-        return true;
-      }
-
-      if (
-        !validateBodyShape(context, response, baseExtraHeaders, payload, {
-          required: ['enabled'],
-          optional: [],
-        })
-      ) {
-        return true;
-      }
-
-      const flagKey = context.path.split('/')[5];
-      try {
-        const result = await setTenantFeatureFlag(
-          config,
-          {
-            tenant: tenantSlug,
-            flagKey,
-            enabled: payload.enabled,
-          },
-          actorMetaFromContext(context, session)
-        );
-        sendJson(response, context, config, 200, result, baseExtraHeaders);
-      } catch (error) {
-        handleServiceFailure(error, response, context, baseExtraHeaders);
-      }
-      return true;
-    }
-
-    // ─── Other ───────────────────────────────────────────────────────
-    if (context.path === '/v1/products') {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      if (!requireDatabaseConfigured(context, response, baseExtraHeaders)) {
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Products catalog requires authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      if (!requireRole(session, 'executive_viewer', response, context, baseExtraHeaders)) {
-        return true;
-      }
-
-      const tenant = await resolveTenantForRequest(
-        context,
-        response,
-        baseExtraHeaders,
-        session,
-        context.url.searchParams.get('tenant'),
-        {
-          allowCrossTenantRoles: ['super_admin'],
-        }
-      );
-      if (!tenant) {
-        return true;
-      }
-      const effectiveRole = resolveRequestedRoleScope(
-        session,
-        context.url.searchParams.get('role'),
-        context,
-        response,
-        baseExtraHeaders
-      );
-      if (!effectiveRole) {
-        return true;
-      }
-      const products = await listTenantProducts(config, tenant, effectiveRole);
-      sendJson(response, context, config, 200, products, baseExtraHeaders);
-      return true;
-    }
-
-    if (context.path === '/v1/modules') {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'Module registry requires authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      if (!requireRole(session, 'executive_viewer', response, context, baseExtraHeaders)) {
-        return true;
-      }
-
-      const tenant = await resolveTenantForRequest(
-        context,
-        response,
-        baseExtraHeaders,
-        session,
-        context.url.searchParams.get('tenant'),
-        {
-          allowCrossTenantRoles: ['super_admin'],
-        }
-      );
-      if (!tenant) {
-        return true;
-      }
-      const role = resolveRequestedRoleScope(
-        session,
-        context.url.searchParams.get('role'),
-        context,
-        response,
-        baseExtraHeaders
-      );
-      if (!role) {
-        return true;
-      }
-      const apps = await listPlatformAppsForRole(tenant, role);
-      sendJson(
-        response,
-        context,
-        config,
-        200,
-        {
-          modules: listRegisteredModules(),
-          apps,
-        },
-        baseExtraHeaders
-      );
-      return true;
-    }
-
-    if (context.path === '/v1/users') {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      if (!requireDatabaseConfigured(context, response, baseExtraHeaders)) {
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'User directory requires authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      if (!requireRole(session, 'tenant_admin', response, context, baseExtraHeaders, 'Tenant admin role required for user directory')) {
-        return true;
-      }
-
-      const tenant = await resolveTenantForRequest(
-        context,
-        response,
-        baseExtraHeaders,
-        session,
-        context.url.searchParams.get('tenant'),
-        {
-          allowCrossTenantRoles: ['super_admin'],
-        }
-      );
-      if (!tenant) {
-        return true;
-      }
-      const limit = toSafeInteger(context.url.searchParams.get('limit'), 25, 1, 200);
-      const payload = await listUsers(config, tenant, limit);
-      sendJson(response, context, config, 200, payload, baseExtraHeaders);
-      return true;
-    }
-
+    // Audit logs
     if (context.path === '/v1/audit-logs') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2180,7 +1442,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── Billing ─────────────────────────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Billing Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/billing/usage') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2312,68 +1574,7 @@ function registerRoutes(routerContext) {
       sendMethodNotAllowed(response, context, config, ['GET', 'PUT'], baseExtraHeaders);
       return true;
     }
-
-    // ─── AI Modules ──────────────────────────────────────────────────
-    if (context.path === '/v1/ai/modules') {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-
-      const session = await requireSession(
-        context,
-        response,
-        baseExtraHeaders,
-        'AI module catalog requires authenticated session'
-      );
-      if (!session) {
-        return true;
-      }
-
-      if (!requireRole(session, 'executive_viewer', response, context, baseExtraHeaders)) {
-        return true;
-      }
-
-      const tenant = await resolveTenantForRequest(
-        context,
-        response,
-        baseExtraHeaders,
-        session,
-        context.url.searchParams.get('tenant'),
-        {
-          allowCrossTenantRoles: ['super_admin'],
-        }
-      );
-      if (!tenant) {
-        return true;
-      }
-      const role = resolveRequestedRoleScope(
-        session,
-        context.url.searchParams.get('role'),
-        context,
-        response,
-        baseExtraHeaders
-      );
-      if (!role) {
-        return true;
-      }
-      const apps = await listPlatformAppsForRole(tenant, role);
-
-      sendJson(
-        response,
-        context,
-        config,
-        200,
-        {
-          modules: listRegisteredModules(),
-          apps,
-        },
-        baseExtraHeaders
-      );
-      return true;
-    }
-
-    // ─── Threats IOCs alias (/v1/threats/iocs → /v1/iocs) ────────────
+    // Threat IOC aliases
     if (context.path === '/v1/threats/iocs') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2399,7 +1600,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── Audit Log alias (/v1/audit-log → /v1/audit-logs) ───────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Audit Log alias (/v1/audit-log Ã¢â€ â€™ /v1/audit-logs) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/audit-log') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2423,34 +1624,7 @@ function registerRoutes(routerContext) {
       }
       return true;
     }
-
-    // ─── Notifications list (/v1/notifications) ─────────────────────
-    if (context.path === '/v1/notifications') {
-      if (context.method !== 'GET') {
-        sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
-        return true;
-      }
-      if (!requireDatabaseConfigured(context, response, baseExtraHeaders)) return true;
-      const session = await requireSession(context, response, baseExtraHeaders, 'Notifications require authentication');
-      if (!session) return true;
-      const tenant = await resolveTenantForRequest(context, response, baseExtraHeaders, session, context.url.searchParams.get('tenant'));
-      if (!tenant) return true;
-      const recent = getRecentEventsForTenant(tenant, 0);
-      sendJson(response, context, config, 200, {
-        data: recent.map(evt => ({
-          id: evt.id,
-          type: evt.type,
-          payload: evt.payload,
-          timestamp: evt.timestamp,
-          read: false,
-        })),
-        total: recent.length,
-        unread: recent.length,
-      }, baseExtraHeaders);
-      return true;
-    }
-
-    // ─── Governance Dashboard (/v1/governance/dashboard) ─────────────
+    // Governance dashboard
     if (context.path === '/v1/governance/dashboard') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2484,7 +1658,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── MITRE ATT&CK Tactics (/v1/mitre/tactics) ───────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ MITRE ATT&CK Tactics (/v1/mitre/tactics) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/mitre/tactics') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2522,7 +1696,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── Playbooks (/v1/playbooks) ───────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Playbooks (/v1/playbooks) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/playbooks') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2554,7 +1728,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── SIEM Alerts (/v1/siem/alerts) ───────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ SIEM Alerts (/v1/siem/alerts) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/siem/alerts') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2589,7 +1763,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── Risk Scores (/v1/risk/scores) ───────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Risk Scores (/v1/risk/scores) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/risk/scores') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2638,7 +1812,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── SOC2 Status (/v1/soc2/status) ───────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ SOC2 Status (/v1/soc2/status) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/soc2/status') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2664,7 +1838,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── Threat Hunt Queries (/v1/threat-hunt/queries) ───────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Threat Hunt Queries (/v1/threat-hunt/queries) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/threat-hunt/queries') {
       if (context.method !== 'GET') {
         sendMethodNotAllowed(response, context, config, ['GET'], baseExtraHeaders);
@@ -2686,7 +1860,7 @@ function registerRoutes(routerContext) {
       return true;
     }
 
-    // ─── Correlation Engine (/v1/correlation/run) ────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Correlation Engine (/v1/correlation/run) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (context.path === '/v1/correlation/run') {
       if (context.method !== 'GET' && context.method !== 'POST') {
         sendMethodNotAllowed(response, context, config, ['GET', 'POST'], baseExtraHeaders);

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, ArrowRight, BadgeCheck, Building2, CreditCard, Github, LayoutDashboard, LogOut, Settings, Shield, ShieldCheck, UserRound, Users } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuthStatus } from '@/hooks/use-auth-status';
 import { usePlatformApps } from '@/hooks/use-platform-apps';
@@ -75,6 +75,7 @@ function formatDate(value: string | null | undefined): string {
 
 export default function AccountPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { status, profile, logout } = useAuthStatus();
   const [mode, setMode] = useState<AccountMode>(() => resolveMode(searchParams.get('mode')));
   const [tenant, setTenant] = useState(() => (searchParams.get('tenant') || '').trim().toLowerCase());
@@ -123,6 +124,20 @@ export default function AccountPage() {
     [productsQuery.data]
   );
 
+  useEffect(() => {
+    setMode(resolveMode(searchParams.get('mode')));
+
+    if (searchParams.get('reset') === 'success') {
+      setErrorMessage('');
+      setSuccessMessage('Password reset complete. Sign in with your new password.');
+      return;
+    }
+
+    setSuccessMessage(current =>
+      current === 'Password reset complete. Sign in with your new password.' ? '' : current
+    );
+  }, [searchParams]);
+
   const resetFeedback = () => {
     setErrorMessage('');
     setSuccessMessage('');
@@ -169,7 +184,15 @@ export default function AccountPage() {
         password,
       });
       setAuthTokens(result.tokens.accessToken, result.tokens.refreshToken);
-      redirectAfterAuth(returnTo);
+      const onboardingTenant = String(createdUser.tenant || tenant || 'global').trim() || 'global';
+      const nextSearch = new URLSearchParams({
+        firstLogin: 'true',
+        tenant: onboardingTenant,
+      });
+      if (returnTo !== '/account') {
+        nextSearch.set('returnTo', returnTo);
+      }
+      navigate(`/onboarding?${nextSearch.toString()}`, { replace: true });
     } catch (error) {
       setErrorMessage(describeAuthError(error));
     } finally {
@@ -437,17 +460,19 @@ export default function AccountPage() {
             {/* Quick Actions */}
             <section className="mt-8">
               <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Link
-                  to="/account/team"
-                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
-                >
-                  <Users className="h-5 w-5 text-cyan-300 flex-none" />
-                  <div>
-                    <p className="text-sm font-medium text-white">Team Management</p>
-                    <p className="text-xs text-slate-500">Invite &amp; manage members</p>
-                  </div>
-                </Link>
+              <div className={`grid gap-3 sm:grid-cols-2 ${showTeamInsights ? 'lg:grid-cols-5' : 'lg:grid-cols-2'}`}>
+                {showTeamInsights && (
+                  <Link
+                    to="/account/team"
+                    className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                  >
+                    <Users className="h-5 w-5 text-cyan-300 flex-none" />
+                    <div>
+                      <p className="text-sm font-medium text-white">Team Management</p>
+                      <p className="text-xs text-slate-500">Invite &amp; manage members</p>
+                    </div>
+                  </Link>
+                )}
                 <Link
                   to="/account/api-keys"
                   className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
@@ -468,6 +493,18 @@ export default function AccountPage() {
                     <p className="text-xs text-slate-500">Alert preferences</p>
                   </div>
                 </Link>
+                {showTeamInsights && (
+                  <Link
+                    to="/platform/connectors"
+                    className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                  >
+                    <Building2 className="h-5 w-5 text-cyan-300 flex-none" />
+                    <div>
+                      <p className="text-sm font-medium text-white">Connectors</p>
+                      <p className="text-xs text-slate-500">Manage data sources</p>
+                    </div>
+                  </Link>
+                )}
                 {showTeamInsights && (
                   <Link
                     to="/admin"

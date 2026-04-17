@@ -40,7 +40,7 @@ export default function PasswordResetPage() {
     try {
       await resetPassword({ tenant, resetToken: token, newPassword: password });
       setSuccess(true);
-      setTimeout(() => navigate('/'), 3000);
+      setTimeout(() => navigate('/account?mode=login&reset=success'), 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Password reset failed.';
       setError(msg);

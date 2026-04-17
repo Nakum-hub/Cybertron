@@ -1,10 +1,10 @@
 /**
- * Integration tests — Auth flows.
+ * Integration tests - Auth flows.
  * Tests: register, login, me, logout, password-reset, rate-limit
  *
  * Run: npm run test:integration
  */
-const { describe, it } = require('node:test');
+const { before, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 
@@ -25,18 +25,26 @@ function request(method, path, body = null, headers = {}) {
       },
     };
 
-    const req = http.request(opts, (res) => {
+    const req = http.request(opts, res => {
       let data = '';
-      res.on('data', (chunk) => { data += chunk; });
+      res.on('data', chunk => {
+        data += chunk;
+      });
       res.on('end', () => {
         let parsed = null;
-        try { parsed = JSON.parse(data); } catch { parsed = data; }
+        try {
+          parsed = JSON.parse(data);
+        } catch {
+          parsed = data;
+        }
         resolve({ status: res.statusCode, headers: res.headers, body: parsed });
       });
     });
 
     req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
+    if (body) {
+      req.write(JSON.stringify(body));
+    }
     req.end();
   });
 }
@@ -45,28 +53,60 @@ describe('Auth Integration Tests', () => {
   const uniqueEmail = `test-auth-${Date.now()}@cybertron-test.io`;
   const password = 'TestP@ssw0rd!2026';
   let accessToken = null;
+  let dbReady = false;
+  let readinessFailure = '';
 
-  it('POST /v1/auth/register — should create user (or return 409 if DB unavailable)', async () => {
+  before(async () => {
+    try {
+      const readiness = await request('GET', '/api/v1/system/readiness');
+      const database = readiness.body?.dependencies?.database;
+      dbReady =
+        readiness.status === 200 &&
+        readiness.body?.ready === true &&
+        database?.configured !== false &&
+        database?.status !== 'down';
+
+      if (!dbReady) {
+        readinessFailure = `readiness=${readiness.status} database=${database?.status || 'unknown'}`;
+      }
+    } catch (error) {
+      readinessFailure = error instanceof Error ? error.message : 'unknown readiness failure';
+      dbReady = false;
+    }
+  });
+
+  function requireDatabase(t) {
+    if (!dbReady) {
+      t.skip(`Database not ready for auth integration tests (${readinessFailure || 'unavailable'}).`);
+      return false;
+    }
+    return true;
+  }
+
+  it('POST /v1/auth/register - should create user or return 409 for duplicate email', async t => {
+    if (!requireDatabase(t)) {
+      return;
+    }
+
     const res = await request('POST', `/api/v1/auth/register?tenant=${TEST_TENANT}`, {
       email: uniqueEmail,
       password,
       displayName: 'Integration Test User',
     });
-    // 201 = created, 409 = already exists, 503 = DB not available
-    assert.ok([201, 409, 503].includes(res.status),
-      `Expected 201/409/503, got ${res.status}`);
+
+    assert.ok([201, 409].includes(res.status), `Expected 201 or 409, got ${res.status}`);
   });
 
-  it('POST /v1/auth/login — correct credentials should return 200 + JWT', async () => {
+  it('POST /v1/auth/login - correct credentials should return 200 and JWT', async t => {
+    if (!requireDatabase(t)) {
+      return;
+    }
+
     const res = await request('POST', `/api/v1/auth/login?tenant=${TEST_TENANT}`, {
       email: uniqueEmail,
       password,
     });
-    // If DB not configured, skip gracefully
-    if (res.status === 503) {
-      assert.ok(true, 'DB not available — skipping login test');
-      return;
-    }
+
     assert.equal(res.status, 200);
     assert.ok(res.body.user, 'Response should contain user');
     assert.ok(res.body.tokens || res.headers['set-cookie'], 'Should return tokens');
@@ -75,62 +115,73 @@ describe('Auth Integration Tests', () => {
     }
   });
 
-  it('POST /v1/auth/login — wrong password should return 401', async () => {
+  it('POST /v1/auth/login - wrong password should return 401', async t => {
+    if (!requireDatabase(t)) {
+      return;
+    }
+
     const res = await request('POST', `/api/v1/auth/login?tenant=${TEST_TENANT}`, {
       email: uniqueEmail,
       password: 'wrong-password-12345',
     });
-    if (res.status === 503) {
-      assert.ok(true, 'DB not available — skipping');
-      return;
-    }
+
     assert.equal(res.status, 401);
   });
 
-  it('GET /v1/auth/me — with valid token should return 200', async () => {
-    if (!accessToken) {
-      assert.ok(true, 'No token available — skipping');
+  it('GET /v1/auth/me - with valid token should return 200', async t => {
+    if (!requireDatabase(t)) {
       return;
     }
+    assert.ok(accessToken, 'Expected access token from login test');
+
     const res = await request('GET', '/api/v1/auth/me', null, {
       Authorization: `Bearer ${accessToken}`,
     });
+
     assert.equal(res.status, 200);
     assert.ok(res.body.email || res.body.user, 'Should return user profile');
   });
 
-  it('GET /v1/auth/me — no token should return 401', async () => {
+  it('GET /v1/auth/me - no token should return 401', async t => {
+    if (!requireDatabase(t)) {
+      return;
+    }
+
     const res = await request('GET', '/api/v1/auth/me');
     assert.equal(res.status, 401);
   });
 
-  it('POST /v1/auth/password/forgot — should return 200 (no token in response)', async () => {
+  it('POST /v1/auth/password/forgot - should return 200', async t => {
+    if (!requireDatabase(t)) {
+      return;
+    }
+
     const res = await request('POST', `/api/v1/auth/password/forgot?tenant=${TEST_TENANT}`, {
       email: uniqueEmail,
     });
-    if (res.status === 503) {
-      assert.ok(true, 'DB not available — skipping');
-      return;
-    }
+
     assert.equal(res.status, 200);
-    assert.ok(res.body.accepted !== undefined || res.body.message,
-      'Should confirm acceptance');
+    assert.ok(res.body.accepted !== undefined || res.body.message, 'Should confirm acceptance');
   });
 
-  it('Rate limit: rapid login attempts should eventually return 429', async () => {
-    const promises = [];
-    for (let i = 0; i < 12; i++) {
-      promises.push(
+  it('Rate limit: rapid login attempts should eventually return 429', async t => {
+    if (!requireDatabase(t)) {
+      return;
+    }
+
+    const attempts = [];
+    for (let index = 0; index < 12; index += 1) {
+      attempts.push(
         request('POST', `/api/v1/auth/login?tenant=${TEST_TENANT}`, {
-          email: `ratelimit-${Date.now()}@test.io`,
+          email: `ratelimit-${Date.now()}-${index}@test.io`,
           password: 'wrong',
         })
       );
     }
-    const results = await Promise.all(promises);
-    const got429 = results.some((r) => r.status === 429);
-    // Rate limiting may not trigger at 12 attempts depending on config
-    // This is a best-effort check
-    assert.ok(true, `Rate limit test completed. 429 received: ${got429}`);
+
+    const results = await Promise.all(attempts);
+    const got429 = results.some(result => result.status === 429);
+
+    assert.ok(got429, 'Expected at least one 429 response from auth rate limiting.');
   });
 });

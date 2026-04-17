@@ -13,11 +13,11 @@ import { pushToast } from '@/components/ui/toaster';
 import { ApiError } from '@/lib/api';
 import {
   fetchAlertSlaMetrics,
-  fetchThreatLlmRuntime,
   fetchIncidents,
   fetchPlaybooks,
   fetchSiemAlertStats,
   fetchThreatIntelCveFeed,
+  fetchThreatLlmRuntime,
   summarizeCve,
   updateIncident,
 } from '@/lib/backend';
@@ -80,6 +80,33 @@ function severityTone(severity?: string | null) {
     default:
       return 'border-white/10 bg-white/5 text-slate-200';
   }
+}
+
+function getAiUnavailableMessage(
+  runtime: {
+    configured?: boolean;
+    reachable?: boolean;
+    reason?: string | null;
+    featureFlags?: { llmFeaturesEnabled?: boolean };
+  } | null | undefined
+) {
+  if (!runtime) {
+    return 'AI provider not configured. Configure an LLM runtime to enable CVE summaries.';
+  }
+
+  if (runtime.featureFlags?.llmFeaturesEnabled === false) {
+    return 'AI analysis is disabled for this tenant. Enable llm_features_enabled to summarize CVEs.';
+  }
+
+  if (runtime.configured === false) {
+    return 'AI provider not configured. Set LLM_PROVIDER and model settings to enable CVE summaries.';
+  }
+
+  if (runtime.reachable === false) {
+    return runtime.reason || 'AI runtime is unavailable. Restore provider connectivity to summarize CVEs.';
+  }
+
+  return '';
 }
 
 type ThreatCommandTab = 'overview' | 'alerts' | 'attackmap' | 'intel';
@@ -151,6 +178,7 @@ export default function ThreatCommandConsole({
     mutationFn: (cveId: string) => summarizeCve(tenant, cveId),
     onMutate: cveId => {
       setSelectedCveId(cveId);
+      setSelectedCveSummary(null);
     },
     onSuccess: (result, cveId) => {
       setSelectedCveId(cveId);
@@ -161,6 +189,7 @@ export default function ThreatCommandConsole({
       });
     },
     onError: error => {
+      setSelectedCveSummary(null);
       pushToast({
         title: 'CVE summary failed',
         description: messageFromError(error, 'Unable to generate a threat summary for this CVE.'),
@@ -172,6 +201,9 @@ export default function ThreatCommandConsole({
   const stats = statsQuery.data?.stats;
   const incidents = incidentsQuery.data?.data || [];
   const sla = slaQuery.data?.metrics;
+  const llmRuntime = llmRuntimeQuery.data;
+  const aiUnavailableMessage = getAiUnavailableMessage(llmRuntime);
+  const aiUnavailable = Boolean(aiUnavailableMessage);
 
   const tabs: Array<{ key: ThreatCommandTab; label: string }> = [
     { key: 'overview', label: 'Overview' },
@@ -237,7 +269,7 @@ export default function ThreatCommandConsole({
                       <div>
                         <p className="text-sm font-medium text-white">{incident.title}</p>
                         <p className="mt-1 text-xs text-slate-400">
-                          {incident.status} · {incident.priority || incident.severity} · {incident.source || 'source unknown'}
+                          {incident.status} | {incident.priority || incident.severity} | {incident.source || 'source unknown'}
                         </p>
                         {incident.escalatedFromAlertId ? (
                           <p className="mt-1 text-xs text-slate-500">
@@ -251,38 +283,22 @@ export default function ThreatCommandConsole({
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={!canManageIncidents || updateIncidentMutation.isPending || incident.status === 'investigating'}
-                        onClick={() => updateIncidentMutation.mutate({ incidentId: incident.id, status: 'investigating' })}
-                        className="rounded-lg border border-cyan-300/30 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Investigating
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canManageIncidents || updateIncidentMutation.isPending || incident.status === 'resolved'}
-                        onClick={() => updateIncidentMutation.mutate({ incidentId: incident.id, status: 'resolved' })}
-                        className="rounded-lg border border-emerald-300/30 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Resolve
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canManageIncidents || updateIncidentMutation.isPending || incident.status === 'closed'}
-                        onClick={() => updateIncidentMutation.mutate({ incidentId: incident.id, status: 'closed' })}
-                        className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Close
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canManageIncidents || updateIncidentMutation.isPending || incident.status === 'open'}
-                        onClick={() => updateIncidentMutation.mutate({ incidentId: incident.id, status: 'open' })}
-                        className="rounded-lg border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Reopen
-                      </button>
+                      {[
+                        { label: 'Investigating', status: 'investigating', tone: 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' },
+                        { label: 'Resolve', status: 'resolved', tone: 'border-emerald-300/30 bg-emerald-400/10 text-emerald-100' },
+                        { label: 'Close', status: 'closed', tone: 'border-white/10 bg-white/[0.03] text-slate-200' },
+                        { label: 'Reopen', status: 'open', tone: 'border-amber-300/30 bg-amber-400/10 text-amber-100' },
+                      ].map(action => (
+                        <button
+                          key={action.status}
+                          type="button"
+                          disabled={!canManageIncidents || updateIncidentMutation.isPending || incident.status === action.status}
+                          onClick={() => updateIncidentMutation.mutate({ incidentId: incident.id, status: action.status as 'investigating' | 'resolved' | 'closed' | 'open' })}
+                          className={`rounded-lg border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60 ${action.tone}`}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 ))}
@@ -314,7 +330,7 @@ export default function ThreatCommandConsole({
                   <p className="mt-2 text-lg font-semibold text-white">{formatMinutes(sla?.avg_time_to_resolve_minutes)}</p>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-[#08111f] p-3 text-sm text-slate-300">
-                  Critical {sla?.critical_sla_breached ?? 0} · High {sla?.high_sla_breached ?? 0} · Medium {sla?.medium_sla_breached ?? 0} · Low {sla?.low_sla_breached ?? 0}
+                  Critical {sla?.critical_sla_breached ?? 0} | High {sla?.high_sla_breached ?? 0} | Medium {sla?.medium_sla_breached ?? 0} | Low {sla?.low_sla_breached ?? 0}
                 </div>
               </div>
             )}
@@ -322,13 +338,9 @@ export default function ThreatCommandConsole({
         </div>
       ) : null}
 
-      {activeTab === 'alerts' ? (
-        <SiemAlertsPanel tenant={tenant} role={role} />
-      ) : null}
+      {activeTab === 'alerts' ? <SiemAlertsPanel tenant={tenant} role={role} /> : null}
 
-      {activeTab === 'attackmap' ? (
-        <AttackMapPanel tenant={tenant} />
-      ) : null}
+      {activeTab === 'attackmap' ? <AttackMapPanel tenant={tenant} /> : null}
 
       {activeTab === 'intel' ? (
         <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -342,39 +354,37 @@ export default function ThreatCommandConsole({
                 <p className="text-sm text-amber-200">
                   {messageFromError(llmRuntimeQuery.error, 'Threat AI runtime is unavailable.')}
                 </p>
-              ) : llmRuntimeQuery.data ? (
+              ) : llmRuntime && !aiUnavailable ? (
                 <div className="space-y-3">
                   <div className="rounded-lg border border-white/10 bg-[#08111f] p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-white">{formatDeployment(llmRuntimeQuery.data.deployment)}</p>
+                        <p className="text-sm font-medium text-white">{formatDeployment(llmRuntime.deployment)}</p>
                         <p className="mt-1 text-xs text-slate-400">
-                          Provider {llmRuntimeQuery.data.provider} · Model {llmRuntimeQuery.data.model || 'not selected'}
+                          Provider {llmRuntime.provider} | Model {llmRuntime.model || 'not selected'}
                         </p>
                       </div>
                       <span className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.16em] ${
-                        llmRuntimeQuery.data.reachable
+                        llmRuntime.reachable
                           ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100'
                           : 'border-amber-400/30 bg-amber-400/10 text-amber-100'
                       }`}>
-                        {llmRuntimeQuery.data.reachable ? 'reachable' : 'fallback'}
+                        {llmRuntime.reachable ? 'reachable' : 'fallback'}
                       </span>
                     </div>
                     <div className="mt-3 grid gap-2 text-xs text-slate-400 md:grid-cols-2">
-                      <p>Endpoint: <span className="text-slate-200">{llmRuntimeQuery.data.endpoint || 'not configured'}</span></p>
-                      <p>Latency: <span className="text-slate-200">{formatLatency(llmRuntimeQuery.data.latencyMs)}</span></p>
-                      <p>Feature flag: <span className="text-slate-200">{llmRuntimeQuery.data.featureFlags?.llmFeaturesEnabled ? 'enabled' : 'disabled'}</span></p>
-                      <p>Checked: <span className="text-slate-200">{new Date(llmRuntimeQuery.data.checkedAt).toLocaleString()}</span></p>
+                      <p>Endpoint: <span className="text-slate-200">{llmRuntime.endpoint || 'not configured'}</span></p>
+                      <p>Latency: <span className="text-slate-200">{formatLatency(llmRuntime.latencyMs)}</span></p>
+                      <p>Feature flag: <span className="text-slate-200">{llmRuntime.featureFlags?.llmFeaturesEnabled ? 'enabled' : 'disabled'}</span></p>
+                      <p>Checked: <span className="text-slate-200">{new Date(llmRuntime.checkedAt).toLocaleString()}</span></p>
                     </div>
-                    {llmRuntimeQuery.data.availableModels.length ? (
+                    {llmRuntime.availableModels.length ? (
                       <p className="mt-3 text-xs text-slate-400">
-                        Available models: <span className="text-slate-200">{llmRuntimeQuery.data.availableModels.slice(0, 3).join(', ')}</span>
+                        Available models: <span className="text-slate-200">{llmRuntime.availableModels.slice(0, 3).join(', ')}</span>
                       </p>
                     ) : null}
-                    {llmRuntimeQuery.data.reason ? (
-                      <p className="mt-3 text-xs text-amber-200">{llmRuntimeQuery.data.reason}</p>
-                    ) : null}
-                    {llmRuntimeQuery.data.sshTunnelSuggested ? (
+                    {llmRuntime.reason ? <p className="mt-3 text-xs text-amber-200">{llmRuntime.reason}</p> : null}
+                    {llmRuntime.sshTunnelSuggested ? (
                       <p className="mt-3 text-xs text-cyan-200">
                         This runtime looks local or tunnel-backed, which matches a Lightning AI SSH tunnel or local vLLM deployment.
                       </p>
@@ -386,7 +396,7 @@ export default function ThreatCommandConsole({
                   <Radar className="mx-auto mb-2 h-8 w-8 text-slate-600" />
                   <p className="text-sm font-medium text-white">AI runtime not configured</p>
                   <p className="mt-2 text-xs text-slate-400">
-                    Set <code className="bg-white/5 px-1 py-0.5 rounded text-[11px]">LLM_PROVIDER</code> to <code className="bg-white/5 px-1 py-0.5 rounded text-[11px]">openai</code>, <code className="bg-white/5 px-1 py-0.5 rounded text-[11px]">ollama</code>, or <code className="bg-white/5 px-1 py-0.5 rounded text-[11px]">vllm</code> in your environment to enable AI-powered threat analysis.
+                    {aiUnavailableMessage || 'Set LLM_PROVIDER to openai, ollama, or vllm in your environment to enable AI-powered threat analysis.'}
                   </p>
                 </div>
               )}
@@ -404,11 +414,12 @@ export default function ThreatCommandConsole({
               ) : cveQuery.data?.data.length ? (
                 <div className="space-y-3">
                   {cveQuery.data.data.map(item => (
-                    <div key={item.id} className={`rounded-lg border p-3 ${
-                      selectedCveId === item.cveId
-                        ? 'border-cyan-300/30 bg-cyan-400/5'
-                        : 'border-white/10 bg-[#08111f]'
-                    }`}>
+                    <div
+                      key={item.id}
+                      className={`rounded-lg border p-3 ${
+                        selectedCveId === item.cveId ? 'border-cyan-300/30 bg-cyan-400/5' : 'border-white/10 bg-[#08111f]'
+                      }`}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-medium text-white">{item.cveId}</p>
@@ -420,15 +431,19 @@ export default function ThreatCommandConsole({
                       </div>
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                         <p className="text-xs text-slate-500">
-                          Relevance {item.relevanceScore} · Published {item.publishedAt ? new Date(item.publishedAt).toLocaleDateString() : 'unknown'}
+                          Relevance {item.relevanceScore} | Published {item.publishedAt ? new Date(item.publishedAt).toLocaleDateString() : 'unknown'}
                         </p>
                         <button
                           type="button"
-                          disabled={summarizeMutation.isPending}
+                          disabled={summarizeMutation.isPending || aiUnavailable}
                           onClick={() => summarizeMutation.mutate(item.cveId)}
                           className="rounded-lg border border-cyan-300/30 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {summarizeMutation.isPending && selectedCveId === item.cveId ? 'Summarizing...' : 'Summarize'}
+                          {aiUnavailable
+                            ? 'AI unavailable'
+                            : summarizeMutation.isPending && selectedCveId === item.cveId
+                              ? 'Summarizing...'
+                              : 'Summarize'}
                         </button>
                       </div>
                     </div>
@@ -480,9 +495,16 @@ export default function ThreatCommandConsole({
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-slate-400">
-                  Select a CVE and run Summarize to verify the live threat-analysis path, provider, and grounding details.
-                </p>
+                <div className="rounded-lg border border-dashed border-white/10 bg-[#08111f] p-4">
+                  <p className="text-sm text-white">
+                    {aiUnavailable
+                      ? 'AI provider not configured'
+                      : 'Select a CVE and run Summarize to verify the live threat-analysis path, provider, and grounding details.'}
+                  </p>
+                  {aiUnavailable ? (
+                    <p className="mt-2 text-xs text-slate-400">{aiUnavailableMessage}</p>
+                  ) : null}
+                </div>
               )}
             </section>
 
@@ -503,7 +525,7 @@ export default function ThreatCommandConsole({
                         <div>
                           <p className="text-sm font-medium text-white">{playbook.name}</p>
                           <p className="mt-1 text-xs text-slate-400">
-                            {playbook.category} · {playbook.is_active ? 'active' : 'inactive'}
+                            {playbook.category} | {playbook.is_active ? 'active' : 'inactive'}
                           </p>
                         </div>
                         <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-slate-300">

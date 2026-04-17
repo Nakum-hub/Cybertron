@@ -8,6 +8,29 @@ Current backend AI modules covered here:
 - `compliance`
 - `threat-intel`
 
+## Runtime expectations
+
+The ML artifacts in this directory exist to improve the behavior of the AI-backed product surfaces that already ship in Cybertron. They are not separate products.
+
+- `risk-copilot`
+  - Should turn risk findings into analyst-readable explanations and report narratives.
+  - Must still produce a usable, clearly labeled rule-based report when no LLM provider is configured.
+- `compliance`
+  - Should draft policy language and help assemble audit evidence into operator-facing outputs.
+  - Must show an explicit "AI provider not configured" or feature-disabled state instead of leaving policy actions blank.
+- `threat-intel`
+  - Should summarize CVEs and enrich threat dashboards with concise analyst context.
+  - Must show an explicit unavailable state when summarization is disabled or no LLM provider is configured.
+
+When serving a trained adapter behind the OpenAI-compatible endpoint, the application should behave as if it were using any other configured LLM provider:
+
+- `LLM_PROVIDER=openai`
+- `OPENAI_BASE_URL` points at the vLLM endpoint
+- `OPENAI_API_KEY` matches the token accepted by that endpoint
+- `OPENAI_MODEL` identifies the served adapter/base-model combination
+
+If those variables are absent, Cybertron should stay operational and fall back to non-AI paths with visible user guidance. The UI should never silently render an empty panel for an AI-backed action.
+
 ## What this is
 
 - `export-cybertron-bootstrap-dataset.js`
