@@ -1,85 +1,41 @@
 'use strict';
 
-/**
- * In-memory event bus for real-time notifications via SSE.
- * Manages connected clients per tenant and broadcasts typed events.
- *
- * P3-2: When Redis is available, events are published to a Redis pub/sub
- * channel so that all backend instances relay notifications to their local
- * SSE clients (horizontal scale-out).
- */
+const crypto = require('node:crypto');
 
 const { getRedisClient } = require('./redis-client');
 
-const REDIS_CHANNEL = 'cybertron:sse:broadcast';
+const REDIS_CHANNEL_PREFIX = 'cybertron:sse:events:';
 const MAX_CLIENTS_PER_TENANT = 50;
 const HEARTBEAT_INTERVAL_MS = 25_000;
+const MAX_RECENT_EVENTS_PER_TENANT = 50;
+const instanceId = crypto.randomUUID();
 
 /** @type {Map<string, Set<{res: object, userId: number, lastEventId: number}>>} */
 const tenantClients = new Map();
-
-let globalEventId = 0;
-
 /** @type {Map<string, Array<{id: number, tenant: string, type: string, payload: object, timestamp: string}>>} */
 const tenantRecentEvents = new Map();
-const MAX_RECENT_EVENTS_PER_TENANT = 50;
 
-// P3-2: Redis subscriber for cross-instance relay
-let _subscriberReady = false;
-let _config = null;
-let _log = () => {};
+let globalEventId = 0;
+let subscriberReady = false;
+let subscriberClient = null;
+let runtimeConfig = null;
+let runtimeLog = () => {};
 
-async function initRedisSubscriber(config, log) {
-  _config = config;
-  _log = log || (() => {});
-
-  if (_subscriberReady) return;
-
-  try {
-    const redis = await getRedisClient(config, log);
-    if (!redis || typeof redis.duplicate !== 'function') return;
-
-    const subscriber = redis.duplicate();
-    await subscriber.connect();
-    await subscriber.subscribe(REDIS_CHANNEL, (message) => {
-      try {
-        const event = JSON.parse(message);
-        // Only relay to local clients — skip re-publishing
-        _localBroadcast(event.tenant, event.type, event.payload, event.id);
-      } catch {
-        // ignore malformed messages
-      }
-    });
-
-    _subscriberReady = true;
-    log('info', 'sse.redis_subscriber_ready', { channel: REDIS_CHANNEL });
-  } catch (err) {
-    log('warn', 'sse.redis_subscriber_failed', {
-      error: err instanceof Error ? err.message : 'unknown',
-    });
-  }
-}
-
-async function _publishToRedis(event) {
-  if (!_config) return;
-  try {
-    const redis = await getRedisClient(_config, _log);
-    if (redis) {
-      await redis.publish(REDIS_CHANNEL, JSON.stringify(event));
-    }
-  } catch {
-    // Redis unavailable — local-only broadcast is fine
-  }
+function nextEventId() {
+  globalEventId += 1;
+  return globalEventId;
 }
 
 function addClient(tenantSlug, userId, res) {
   if (!tenantClients.has(tenantSlug)) {
     tenantClients.set(tenantSlug, new Set());
   }
+
   const clients = tenantClients.get(tenantSlug);
   if (clients.size >= MAX_CLIENTS_PER_TENANT) {
     return false;
   }
+
   const client = { res, userId, lastEventId: globalEventId };
   clients.add(client);
 
@@ -93,8 +49,20 @@ function addClient(tenantSlug, userId, res) {
   return true;
 }
 
+function storeRecentEvent(tenantSlug, event) {
+  if (!tenantRecentEvents.has(tenantSlug)) {
+    tenantRecentEvents.set(tenantSlug, []);
+  }
+
+  const tenantEvents = tenantRecentEvents.get(tenantSlug);
+  tenantEvents.push(event);
+  if (tenantEvents.length > MAX_RECENT_EVENTS_PER_TENANT) {
+    tenantEvents.splice(0, tenantEvents.length - MAX_RECENT_EVENTS_PER_TENANT);
+  }
+}
+
 function _localBroadcast(tenantSlug, eventType, payload, eventId) {
-  const id = eventId || (globalEventId += 1);
+  const id = Number.isFinite(eventId) ? eventId : nextEventId();
   const event = {
     id,
     tenant: tenantSlug,
@@ -103,18 +71,12 @@ function _localBroadcast(tenantSlug, eventType, payload, eventId) {
     timestamp: new Date().toISOString(),
   };
 
-  // Store events per-tenant to prevent noisy-tenant flooding
-  if (!tenantRecentEvents.has(tenantSlug)) {
-    tenantRecentEvents.set(tenantSlug, []);
-  }
-  const tenantEvents = tenantRecentEvents.get(tenantSlug);
-  tenantEvents.push(event);
-  if (tenantEvents.length > MAX_RECENT_EVENTS_PER_TENANT) {
-    tenantEvents.splice(0, tenantEvents.length - MAX_RECENT_EVENTS_PER_TENANT);
-  }
+  storeRecentEvent(tenantSlug, event);
 
   const clients = tenantClients.get(tenantSlug);
-  if (!clients || clients.size === 0) return 0;
+  if (!clients || clients.size === 0) {
+    return 0;
+  }
 
   const data = JSON.stringify({ type: eventType, payload, timestamp: event.timestamp });
   const message = `id: ${id}\nevent: ${eventType}\ndata: ${data}\n\n`;
@@ -129,16 +91,82 @@ function _localBroadcast(tenantSlug, eventType, payload, eventId) {
       clients.delete(client);
     }
   }
+
   return sent;
 }
 
-function broadcast(tenantSlug, eventType, payload) {
-  globalEventId += 1;
-  const sent = _localBroadcast(tenantSlug, eventType, payload, globalEventId);
+async function initRedisSubscriber(config, log) {
+  runtimeConfig = config;
+  runtimeLog = log || (() => {});
 
-  // P3-2: Publish to Redis for cross-instance relay
-  _publishToRedis({
-    id: globalEventId,
+  if (subscriberReady) {
+    return;
+  }
+
+  try {
+    const redis = await getRedisClient(config, runtimeLog);
+    if (!redis || typeof redis.duplicate !== 'function') {
+      return;
+    }
+
+    const subscriber = redis.duplicate();
+    await subscriber.connect();
+    await subscriber.pSubscribe(`${REDIS_CHANNEL_PREFIX}*`, (message, channel) => {
+      try {
+        const event = JSON.parse(message);
+        if (event.originId === instanceId) {
+          return;
+        }
+
+        const tenant =
+          typeof channel === 'string' && channel.startsWith(REDIS_CHANNEL_PREFIX)
+            ? channel.slice(REDIS_CHANNEL_PREFIX.length)
+            : String(event.tenant || '').trim();
+        if (!tenant) {
+          return;
+        }
+
+        _localBroadcast(tenant, event.type, event.payload);
+      } catch {
+        // Ignore malformed relay events.
+      }
+    });
+
+    subscriberClient = subscriber;
+    subscriberReady = true;
+    runtimeLog('info', 'sse.redis_subscriber_ready', {
+      channelPattern: `${REDIS_CHANNEL_PREFIX}*`,
+      instanceId,
+    });
+  } catch (error) {
+    runtimeLog('warn', 'sse.redis_subscriber_failed', {
+      error: error instanceof Error ? error.message : 'unknown',
+    });
+  }
+}
+
+async function publishToRedis(event) {
+  if (!runtimeConfig) {
+    return;
+  }
+
+  try {
+    const redis = await getRedisClient(runtimeConfig, runtimeLog);
+    if (!redis) {
+      return;
+    }
+
+    await redis.publish(`${REDIS_CHANNEL_PREFIX}${event.tenant}`, JSON.stringify(event));
+  } catch {
+    // Redis relay is optional. Local broadcast already completed.
+  }
+}
+
+function broadcast(tenantSlug, eventType, payload) {
+  const sent = _localBroadcast(tenantSlug, eventType, payload);
+
+  void publishToRedis({
+    originId: instanceId,
     tenant: tenantSlug,
     type: eventType,
     payload,
@@ -149,7 +177,7 @@ function broadcast(tenantSlug, eventType, payload) {
 
 function getRecentEventsForTenant(tenantSlug, sinceId) {
   const tenantEvents = tenantRecentEvents.get(tenantSlug) || [];
-  return tenantEvents.filter(e => e.id > sinceId);
+  return tenantEvents.filter(event => event.id > sinceId);
 }
 
 function getConnectedClientCount(tenantSlug) {
@@ -165,7 +193,26 @@ function getTotalConnectedClients() {
   return total;
 }
 
-// Heartbeat to keep connections alive
+async function closeNotificationBus() {
+  const subscriber = subscriberClient;
+  subscriberClient = null;
+  subscriberReady = false;
+
+  if (!subscriber) {
+    return;
+  }
+
+  try {
+    await subscriber.quit();
+  } catch {
+    try {
+      subscriber.disconnect();
+    } catch {
+      // Ignore hard disconnect failures during shutdown.
+    }
+  }
+}
+
 const heartbeatTimer = setInterval(() => {
   const comment = `: heartbeat ${Date.now()}\n\n`;
   for (const clients of tenantClients.values()) {
@@ -182,8 +229,6 @@ const heartbeatTimer = setInterval(() => {
 if (heartbeatTimer.unref) {
   heartbeatTimer.unref();
 }
-
-// ─── Convenience broadcasters ────────────────────────────────────
 
 function notifyIncidentCreated(tenantSlug, incident) {
   broadcast(tenantSlug, 'incident.created', {
@@ -237,14 +282,15 @@ function notifyAuditEvent(tenantSlug, action, targetType) {
 module.exports = {
   addClient,
   broadcast,
-  initRedisSubscriber,
-  getRecentEventsForTenant,
+  closeNotificationBus,
   getConnectedClientCount,
+  getRecentEventsForTenant,
   getTotalConnectedClients,
+  initRedisSubscriber,
+  notifyAlertIngested,
+  notifyAuditEvent,
+  notifyComplianceStatusChanged,
   notifyIncidentCreated,
   notifyIncidentUpdated,
-  notifyAlertIngested,
-  notifyComplianceStatusChanged,
   notifyPlaybookExecuted,
-  notifyAuditEvent,
 };

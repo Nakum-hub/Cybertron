@@ -215,9 +215,11 @@ const {
 } = require('./compliance-framework-service');
 const {
   addClient: addSseClient,
+  closeNotificationBus,
   getRecentEventsForTenant,
   getConnectedClientCount,
   getTotalConnectedClients,
+  initRedisSubscriber,
   notifyIncidentCreated,
   notifyIncidentUpdated,
   notifyAlertIngested,
@@ -230,10 +232,13 @@ const { registerRoutes: registerComplianceRoutes } = require('./modules/complian
 const { registerRoutes: registerThreatIntelRoutes } = require('./modules/threat-intel/routes');
 const { registerRoutes: registerAuthRoutes } = require('./routes/auth');
 const { registerRoutes: registerSystemRoutes } = require('./routes/system');
-const { registerRoutes: registerCrudRoutes } = require('./routes/crud');
 const { registerRoutes: registerAdminRoutes } = require('./routes/admin');
+const { registerRoutes: registerBillingCrudRoutes } = require('./routes/billing-crud');
 const { registerRoutes: registerNotificationRoutes } = require('./routes/notifications');
 const { registerRoutes: registerPlatformRoutes } = require('./routes/platform');
+const { registerRoutes: registerGovernanceRoutes } = require('./routes/governance');
+const { registerRoutes: registerReportRoutes } = require('./routes/reports');
+const { registerRoutes: registerThreatRoutes } = require('./routes/threats');
 const { extractContext, startRequestSpan, endRequestSpan } = require('./tracing');
 
 const sessionStore = createSessionStore({
@@ -2433,9 +2438,12 @@ function registerCoreRoutes() {
   registerAuthRoutes(routerContext);
   registerSystemRoutes(routerContext);
   registerAdminRoutes(routerContext);
+  registerThreatRoutes(routerContext);
+  registerReportRoutes(routerContext);
+  registerBillingCrudRoutes(routerContext);
+  registerGovernanceRoutes(routerContext);
   registerNotificationRoutes(routerContext);
   registerPlatformRoutes(routerContext);
-  registerCrudRoutes(routerContext);
 }
 
 registerCoreRoutes();
@@ -2806,6 +2814,8 @@ async function startServer() {
     }
   }
 
+  await initRedisSubscriber(config, log);
+
   server.on('error', error => {
     const code = error && typeof error === 'object' && 'code' in error ? error.code : 'UNKNOWN';
     const message =
@@ -2840,6 +2850,11 @@ async function startServer() {
     clearInterval(retentionTimer);
 
     Promise.all([
+      closeNotificationBus().catch(error => {
+        log('warn', 'notification_bus.close_failed', {
+          error: error instanceof Error ? error.message : 'unknown close failure',
+        });
+      }),
       closeDatabase().catch(error => {
         log('warn', 'database.close_failed', {
           error: error instanceof Error ? error.message : 'unknown close failure',
