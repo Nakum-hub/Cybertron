@@ -69,6 +69,7 @@ export default function App() {
           <Route path="/" element={<Index />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/platform" element={<Platform />} />
+          <Route path="/platform/connectors" element={<ConnectorsPage />} />
           <Route path="/platform/:appId" element={<Platform />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/auth/error" element={<AuthError />} />
@@ -78,7 +79,6 @@ export default function App() {
           <Route path="/account/team" element={<TeamPage />} />
           <Route path="/account/api-keys" element={<ApiKeysPage />} />
           <Route path="/account/notifications" element={<NotificationsPage />} />
-          <Route path="/platform/connectors" element={<ConnectorsPage />} />
           <Route path="/billing/success" element={<BillingSuccessPage />} />
           <Route path="/billing/cancel" element={<BillingCancelPage />} />
           <Route path="/status" element={<StatusPage />} />
