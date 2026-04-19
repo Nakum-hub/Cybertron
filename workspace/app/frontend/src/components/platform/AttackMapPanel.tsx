@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Globe2, MapPinned } from 'lucide-react';
 import { ApiError } from '@/lib/api';
 import { fetchAttackMapData } from '@/lib/backend';
@@ -49,20 +50,18 @@ export default function AttackMapPanel({
           {errorMessage(attackMapQuery.error, 'Attack map data is unavailable.')}
         </p>
       ) : !nodes.length ? (
-        <div className="rounded-lg border border-dashed border-white/10 bg-[#08111f] p-8 text-center">
-          <MapPinned className="mx-auto mb-3 h-10 w-10 text-slate-600" />
-          <p className="text-base font-semibold text-white">Connect a data source to see live threat activity</p>
-          <p className="mt-2 text-sm text-slate-400 max-w-md mx-auto">
-            Wazuh, MISP, OpenCTI, or TheHive connections will populate this map with real-time geo-tagged attack paths.
-            Alert payloads must include <code className="text-xs bg-white/5 px-1 py-0.5 rounded">source_geo_lat</code>, <code className="text-xs bg-white/5 px-1 py-0.5 rounded">source_geo_lon</code>, <code className="text-xs bg-white/5 px-1 py-0.5 rounded">dest_geo_lat</code>, and <code className="text-xs bg-white/5 px-1 py-0.5 rounded">dest_geo_lon</code>.
+        <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <MapPinned className="h-8 w-8 text-slate-500" />
+          <p className="text-sm font-medium text-slate-200">No live threat activity</p>
+          <p className="text-xs text-slate-400">
+            Connect Wazuh, MISP, OpenCTI, or TheHive to populate this map.
           </p>
-          <a
-            href="/platform/connectors"
-            className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-sm font-semibold hover:from-cyan-500 hover:to-blue-500 transition-all duration-200"
+          <Link
+            to="/platform/connectors"
+            className="rounded-lg border border-cyan-300/20 bg-cyan-400/10 px-3 py-1.5 text-xs text-cyan-100 hover:bg-cyan-400/15"
           >
-            <Globe2 className="h-4 w-4" />
             Configure Connectors
-          </a>
+          </Link>
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -163,7 +162,7 @@ export default function AttackMapPanel({
                   <div key={`${node.type}-${node.ip}`} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                     <p className="text-sm font-medium text-white">{node.ip}</p>
                     <p className="mt-1 text-xs text-slate-400">
-                      {node.country}{node.city ? `, ${node.city}` : ''} · {node.type}
+                      {node.country}{node.city ? `, ${node.city}` : ''} | {node.type}
                     </p>
                   </div>
                 ))}
